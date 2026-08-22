@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+﻿import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { createApi } from "../../lib/createApi";
-import type { KpiData, TrainingTask, ResourceStatus } from "../../lib/api";
+import type { KpiData, TrainingTask, ResourceStatus, GpuModelEntry } from "../../lib/api";
 
 export default function DashboardPage() {
   const api = createApi();
@@ -9,13 +9,15 @@ export default function DashboardPage() {
   const [kpis, setKpis] = useState<KpiData | null>(null);
   const [tasks, setTasks] = useState<TrainingTask[]>([]);
   const [resources, setResources] = useState<ResourceStatus | null>(null);
+  const [gpuModels, setGpuModels] = useState<GpuModelEntry[]>([]);
 
   useEffect(() => {
-    Promise.all([api.getKpis(), api.getTrainingTasks(), api.getResourceStatus()]).then(
-      ([k, t, r]) => {
+    Promise.all([api.getKpis(), api.getTrainingTasks(), api.getResourceStatus(), api.getGpuModels()]).then(
+      ([k, t, r, m]) => {
         setKpis(k);
         setTasks(t);
         setResources(r);
+        setGpuModels(m);
       },
     );
   }, []);
@@ -76,13 +78,15 @@ export default function DashboardPage() {
             <div className="meter-label">
               <span>显存 / {resources.gpuDevice}</span>
               <b>
-                {resources.usedMemory} / {resources.totalMemory} GB
+                {kpis.gpuUsedMb > 0
+                  ? `${(kpis.gpuUsedMb / 1024).toFixed(1)} / ${(kpis.gpuTotalMb / 1024).toFixed(1)} GB`
+                  : `${resources.usedMemory} / ${resources.totalMemory} GB`}
               </b>
             </div>
             <div className="meter">
               <div
                 className="meter-fill"
-                style={{ width: `${(resources.usedMemory / resources.totalMemory) * 100}%` }}
+                style={{ width: `${kpis.gpuUsage}%` }}
               />
             </div>
             <div style={{ marginTop: 12 }}>
@@ -111,8 +115,60 @@ export default function DashboardPage() {
             </div>
             <div className="detail-row" style={{ marginTop: 12 }}>
               <span>驻留集合</span>
-              <b>{resources.residentModels} 个模型 / 手动</b>
+              <b>{gpuModels.length} 个模型 / 手动</b>
             </div>
+          </div>
+        </div>
+
+        {/* Loaded Models */}
+        <div className="card">
+          <div className="card-head">
+            <div>
+              <div className="card-title">已加载模型</div>
+              <div className="card-kicker">{gpuModels.length} 个驻留</div>
+            </div>
+            <button className="card-action" onClick={() => navigate("/resources")}>
+              管理
+            </button>
+          </div>
+          <div>
+            {gpuModels.length === 0 ? (
+              <div style={{ padding: "12px 16px", color: "var(--text-muted)", fontSize: 11 }}>
+                当前无驻留模型
+              </div>
+            ) : (
+              gpuModels.slice(0, 4).map((m) => (
+                <div
+                  key={m.gpuDevice}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr auto",
+                    gap: 10,
+                    padding: "10px 16px",
+                    borderBottom: "1px solid #dce8f0",
+                  }}
+                >
+                  <div>
+                    <div style={{ color: "var(--text)", fontSize: 12 }}>
+                      {m.modelName}
+                    </div>
+                    <div
+                      style={{
+                        marginTop: 3,
+                        color: "var(--text-muted)",
+                        fontSize: 9,
+                        fontFamily: "Courier New, monospace",
+                      }}
+                    >
+                      {m.gpuDevice} / {(m.memoryMb / 1024).toFixed(1)} GB
+                    </div>
+                  </div>
+                  <span className="online" style={{ fontSize: 9, alignSelf: "center" }}>
+                    已加载
+                  </span>
+                </div>
+              ))
+            )}
           </div>
         </div>
 

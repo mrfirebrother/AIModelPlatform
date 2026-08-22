@@ -1,14 +1,47 @@
-import { useEffect, useState } from "react";
+﻿import { useEffect, useState } from "react";
 import { createApi } from "../../lib/createApi";
-import type { ResourceStatus } from "../../lib/api";
+import type { ResourceStatus, GpuStatus, GpuModelEntry } from "../../lib/api";
 
 export default function ResourcesPage() {
   const api = createApi();
   const [res, setRes] = useState<ResourceStatus | null>(null);
+  const [gpuStatus, setGpuStatus] = useState<GpuStatus | null>(null);
+  const [gpuModels, setGpuModels] = useState<GpuModelEntry[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [loadName, setLoadName] = useState("");
+  const [loadMem, setLoadMem] = useState(2048);
+
+  const refresh = () => {
+    api.getGpuStatus().then(setGpuStatus);
+    api.getGpuModels().then(setGpuModels);
+  };
 
   useEffect(() => {
     api.getResourceStatus().then(setRes);
+    refresh();
   }, []);
+
+  const handleLoad = async () => {
+    if (!loadName.trim()) return;
+    setLoading(true);
+    try {
+      await api.gpuLoadModel(loadName.trim(), loadMem);
+      setLoadName("");
+      refresh();
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUnload = async (name: string) => {
+    setLoading(true);
+    try {
+      await api.gpuUnloadModel(name);
+      refresh();
+    } finally {
+      setLoading(false);
+    }
+  };
 
   if (!res) return <div className="empty-state">加载中...</div>;
 
@@ -28,13 +61,13 @@ export default function ResourcesPage() {
             <div className="meter-label">
               <span>显存使用</span>
               <b>
-                {res.usedMemory} / {res.totalMemory} GB
+                {gpuStatus ? `${(gpuStatus.usedMemoryMb / 1024).toFixed(1)} / ${(gpuStatus.totalMemoryMb / 1024).toFixed(1)} GB` : `${res.usedMemory} / ${res.totalMemory} GB`}
               </b>
             </div>
             <div className="meter">
               <div
                 className="meter-fill"
-                style={{ width: `${(res.usedMemory / res.totalMemory) * 100}%` }}
+                style={{ width: `${gpuStatus ? (gpuStatus.usedMemoryMb / gpuStatus.totalMemoryMb) * 100 : (res.usedMemory / res.totalMemory) * 100}%` }}
               />
             </div>
 
@@ -69,16 +102,108 @@ export default function ResourcesPage() {
             <div className="detail-list">
               <div className="detail-row">
                 <span>空闲显存</span>
-                <b>{(res.totalMemory - res.usedMemory).toFixed(1)} GB</b>
+                <b>{gpuStatus ? `${(gpuStatus.freeMemoryMb / 1024).toFixed(1)} GB` : `${(res.totalMemory - res.usedMemory).toFixed(1)} GB`}</b>
               </div>
               <div className="detail-row">
                 <span>驻留模型数</span>
-                <b>{res.residentModels} 个</b>
+                <b>{gpuModels.length} 个</b>
               </div>
               <div className="detail-row">
                 <span>管理方式</span>
                 <b>管理员手动</b>
               </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Loaded Models */}
+        <div className="card">
+          <div className="card-head">
+            <div>
+              <div className="card-title">已加载模型</div>
+              <div className="card-kicker">GPU 驻留模型列表</div>
+            </div>
+          </div>
+          <div className="card-body">
+            {gpuModels.length === 0 ? (
+              <div style={{ color: "var(--text-muted)", fontSize: 12, padding: "12px 0" }}>
+                当前无驻留模型
+              </div>
+            ) : (
+              <div>
+                {gpuModels.map((m) => (
+                  <div
+                    key={m.gpuDevice}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr auto auto",
+                      gap: 10,
+                      padding: "10px 0",
+                      borderBottom: "1px solid #dce8f0",
+                      alignItems: "center",
+                    }}
+                  >
+                    <div>
+                      <div style={{ color: "var(--text)", fontSize: 12, fontWeight: 600 }}>
+                        {m.modelName}
+                      </div>
+                      <div style={{ color: "var(--text-muted)", fontSize: 9, fontFamily: "Courier New, monospace", marginTop: 2 }}>
+                        {m.gpuDevice} / {(m.memoryMb / 1024).toFixed(1)} GB
+                      </div>
+                    </div>
+                    <span className="online" style={{ fontSize: 9 }}>已加载</span>
+                    <button
+                      className="card-action"
+                      onClick={() => handleUnload(m.modelName)}
+                      disabled={loading}
+                      style={{ fontSize: 10, padding: "4px 8px" }}
+                    >
+                      卸载
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <hr style={{ border: "none", borderTop: "1px solid #d7e5ed", margin: "16px 0" }} />
+
+            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text)", marginBottom: 8 }}>
+              加载模型
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 80px auto", gap: 8, alignItems: "center" }}>
+              <input
+                type="text"
+                placeholder="模型名称"
+                value={loadName}
+                onChange={(e) => setLoadName(e.target.value)}
+                style={{
+                  padding: "6px 8px",
+                  border: "1px solid #d7e5ed",
+                  borderRadius: 4,
+                  fontSize: 12,
+                  fontFamily: "inherit",
+                }}
+              />
+              <input
+                type="number"
+                placeholder="MB"
+                value={loadMem}
+                onChange={(e) => setLoadMem(Number(e.target.value))}
+                style={{
+                  padding: "6px 8px",
+                  border: "1px solid #d7e5ed",
+                  borderRadius: 4,
+                  fontSize: 12,
+                  fontFamily: "Courier New, monospace",
+                }}
+              />
+              <button
+                className="card-action"
+                onClick={handleLoad}
+                disabled={loading || !loadName.trim()}
+              >
+                加载
+              </button>
             </div>
           </div>
         </div>

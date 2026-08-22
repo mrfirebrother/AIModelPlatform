@@ -1,4 +1,4 @@
-/* ===== Type definitions ===== */
+﻿/* ===== Type definitions ===== */
 
 export type ModelNodeStatus = "candidate" | "approved" | "rejected" | "archived";
 export type BindingStatus = "active" | "inactive" | "unbound";
@@ -118,11 +118,35 @@ export interface ResourceStatus {
   healthy: boolean;
 }
 
+export interface GpuStatus {
+  deviceCount: number;
+  totalMemoryMb: number;
+  usedMemoryMb: number;
+  freeMemoryMb: number;
+}
+
+export interface GpuModelEntry {
+  modelName: string;
+  gpuDevice: string;
+  memoryMb: number;
+}
+
+export interface GpuLoadResponse {
+  success: boolean;
+  gpuDevice?: string;
+}
+
+export interface GpuUnloadResponse {
+  success: boolean;
+}
+
 export interface KpiData {
   bindingCount: number;
   bindingDelta: number;
   residentModels: number;
   gpuUsage: number;
+  gpuUsedMb: number;
+  gpuTotalMb: number;
   trainingQueue: number;
   trainingRunning: number;
   pendingEval: number;
@@ -143,4 +167,8 @@ export interface ApiClient {
   getResourceStatus(): Promise<ResourceStatus>;
   loadModel(modelNodeId: string): Promise<boolean>;
   rollbackBinding(bindingId: string, targetReleaseId: string): Promise<boolean>;
+  getGpuStatus(): Promise<GpuStatus>;
+  getGpuModels(): Promise<GpuModelEntry[]>;
+  gpuLoadModel(modelName: string, memoryMb: number): Promise<GpuLoadResponse>;
+  gpuUnloadModel(modelName: string): Promise<GpuUnloadResponse>;
 }

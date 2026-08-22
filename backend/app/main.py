@@ -43,6 +43,7 @@ def create_app(
         bindings_router,
         datasets_router,
         evaluations_router,
+        gpu_router,
         health_router,
         infer_router,
         models_router,
@@ -60,6 +61,7 @@ def create_app(
     app.include_router(releases_router)
     app.include_router(resources_router)
     app.include_router(infer_router)
+    app.include_router(gpu_router)
 
     @app.get("/health/live")
     async def liveness() -> dict[str, str]:
