@@ -25,7 +25,11 @@ celery_app.conf.update(
             "schedule": 60.0,
         },
     },
+    task_acks_late=True,
+    task_reject_on_worker_lost=True,
+    worker_prefetch_multiplier=1,
 )
 
 # Import placeholder tasks after the Celery application exists so Beat can discover them.
 from . import scheduler as _scheduler  # noqa: E402,F401
+from . import train_worker as _train_worker  # noqa: E402,F401
