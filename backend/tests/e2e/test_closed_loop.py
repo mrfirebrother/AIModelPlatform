@@ -11,9 +11,11 @@ when no GPU environment is available (``CUDA_VISIBLE_DEVICES`` unset).
 
 from __future__ import annotations
 
+import hashlib
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Generator
 
 import pytest
@@ -39,6 +41,18 @@ from backend.app.services import (
     training_service,
 )
 from backend.tests.fixtures.build_fixtures import FixtureBuilder
+from backend.tests.fixtures.build_real_fixtures import (
+    RealYoloDataset,
+    build_real_yolo_dataset,
+    ensure_root_model_exists,
+    cleanup_real_dataset,
+)
+from backend.app.training.yolo_trainer import YoloTrainer
+from backend.app.training.yolo_dataset import YoloDataset
+
+
+def _sha256_hex(data: str) -> str:
+    return hashlib.sha256(data.encode()).hexdigest()
 
 
 # ---------------------------------------------------------------------------
@@ -824,3 +838,202 @@ class TestFullLifecycle:
 
         assert rollback.release_type == "rollback"
         assert rollback.rollback_target_release_id == release.id
+
+
+# ---------------------------------------------------------------------------
+# 15. Real YOLO closed-loop (CPU, epochs=2)
+# ---------------------------------------------------------------------------
+
+@pytest.fixture()
+def real_dataset() -> RealYoloDataset:
+    ds = build_real_yolo_dataset()
+    yield ds
+    cleanup_real_dataset(ds.root_dir)
+
+
+class TestRealYoloClosedLoop:
+    """Full lifecycle using real YOLO training on CPU with a tiny dataset."""
+
+    def test_import_root_model_real(self, real_dataset):
+        model_path = ensure_root_model_exists()
+        assert model_path.exists()
+        assert model_path.suffix == ".pt"
+        assert model_path.stat().st_size > 0
+
+    def test_real_dataset_structure(self, real_dataset):
+        assert real_dataset.data_yaml_path.exists()
+        assert real_dataset.nc == 2
+        assert len(real_dataset.train_images) == 10
+        assert len(real_dataset.val_images) == 4
+        for img in real_dataset.train_images:
+            assert img.exists()
+            assert img.suffix == ".jpg"
+
+    def test_real_yolo_train_produces_checkpoint(self, real_dataset, tmp_path):
+        model_path = ensure_root_model_exists()
+        checkpoint_dir = tmp_path / "checkpoints"
+
+        trainer = YoloTrainer({
+            "epochs": 2,
+            "imgsz": 640,
+            "batch": 2,
+            "device": "cpu",
+            "model_name": "yolov8n",
+            "project": str(checkpoint_dir),
+            "name": "train",
+        })
+
+        result = trainer.train(
+            dataset_dir=real_dataset.root_dir,
+            checkpoint_dir=checkpoint_dir,
+            parent_model_path=str(model_path),
+        )
+
+        assert result.success, f"Training failed: {result.error}"
+        assert result.epochs_completed == 2
+        assert result.best_model_path is not None
+        assert Path(result.best_model_path).exists()
+        assert len(result.metrics) > 0
+
+    def test_full_real_yolo_closed_loop(self, session, builder, real_dataset, tmp_path):
+        """Full lifecycle: import -> dataset -> snapshot -> train -> candidate -> evaluate -> publish -> inference -> rollback."""
+        import uuid as _uuid
+
+        # 1. Import root model
+        model_path = ensure_root_model_exists()
+        root = builder.root_model(
+            name="yolov8n-root-real",
+            label_schema=builder._create_label_schema(
+                name="schema-real-root",
+                classes=[
+                    (0, "crack", "Crack"),
+                    (1, "spalling", "Spalling"),
+                ],
+            ),
+        )
+        assert root.model_node.status == "approved"
+
+        # 2. Import dataset and create snapshot
+        ds = builder.first_gen_dataset(label_schema=root.label_schema)
+        assert ds.snapshot.train_positive_count > 0
+        assert ds.snapshot.val_positive_count > 0
+
+        # 3. Create training task
+        task = training_service.create_task(
+            session,
+            parent_model_node_id=root.model_node.id,
+            dataset_snapshot_id=ds.snapshot.id,
+            task_type="object_detection",
+            model_family="yolo",
+            training_config_json={"epochs": 2, "batch": 2, "device": "cpu"},
+            resource_config_json={},
+            evaluation_policy_json={"min_mAP50": 0.0},
+        )
+        assert task.status == "queued"
+
+        # 4. Start attempt
+        attempt = training_service.start_attempt(session, task.id)
+        assert attempt.status == "running"
+
+        # 5. Actually train with YOLO
+        checkpoint_dir = tmp_path / "checkpoints"
+        trainer = YoloTrainer({
+            "epochs": 2,
+            "imgsz": 640,
+            "batch": 2,
+            "device": "cpu",
+            "model_name": "yolov8n",
+            "project": str(checkpoint_dir),
+            "name": "train",
+        })
+        result = trainer.train(
+            dataset_dir=real_dataset.root_dir,
+            checkpoint_dir=checkpoint_dir,
+            parent_model_path=str(model_path),
+        )
+        assert result.success, f"Training failed: {result.error}"
+
+        # 6. Complete attempt -> candidate
+        candidate = training_service.complete_attempt(
+            session,
+            attempt.id,
+            artifact_path=result.best_model_path,
+            artifact_hash=f"sha256:{_sha256_hex(result.best_model_path)}",
+            metadata_json={"metrics": result.metrics, "epochs": result.epochs_completed},
+        )
+        assert candidate.status == "candidate"
+        assert candidate.parent_id == root.model_node.id
+
+        # 7. Auto evaluate + human review pass
+        ev = builder.evaluation(
+            model_node_id=candidate.id,
+            dataset_snapshot_id=ds.snapshot.id,
+            auto_status="passed",
+            human_status="passed",
+        )
+        assert ev.auto_status == "passed"
+        assert ev.human_status == "passed"
+
+        # 8. Approve candidate
+        candidate.status = "approved"
+        session.flush()
+        assert candidate.status == "approved"
+
+        # 9. Create binding and publish
+        binding = ModelBinding(external_ref="real-yolo-binding", status="unbound")
+        session.add(binding)
+        session.flush()
+
+        release = BindingRelease(
+            binding_id=binding.id,
+            revision_no=1,
+            model_node_id=candidate.id,
+            inference_config_json={"confidence": 0.5},
+            inference_config_hash=f"sha256:{_sha256_hex('real-yolo-config')}",
+            release_type="normal",
+            status="active",
+        )
+        session.add(release)
+        session.flush()
+
+        binding.current_release_id = release.id
+        binding.status = "bound"
+        session.flush()
+        assert binding.status == "bound"
+
+        # 10. Inference metadata check
+        instance = RuntimeInstance(
+            binding_id=binding.id,
+            release_id=release.id,
+            model_node_id=candidate.id,
+            config_hash=f"sha256:{_sha256_hex('real-yolo-config')}",
+            generation=1,
+            fencing_token=1,
+            status="serving",
+            gpu_device="cpu",
+            reserved_memory_mb=2048,
+        )
+        session.add(instance)
+        session.flush()
+        binding.current_runtime_instance_id = instance.id
+        session.flush()
+        assert instance.status == "serving"
+
+        # 11. Rollback
+        rollback = BindingRelease(
+            binding_id=binding.id,
+            revision_no=2,
+            model_node_id=root.model_node.id,
+            inference_config_json={},
+            inference_config_hash=f"sha256:{_sha256_hex('root-config')}",
+            release_type="rollback",
+            rollback_target_release_id=release.id,
+            status="active",
+            reason="Regression detected",
+        )
+        session.add(rollback)
+        session.flush()
+
+        assert rollback.release_type == "rollback"
+        assert rollback.rollback_target_release_id == release.id
+        assert rollback.revision_no == 2
