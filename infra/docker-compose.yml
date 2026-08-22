@@ -1,4 +1,4 @@
-﻿# AI Model Platform - Docker Compose (Final)
+﻿﻿# AI Model Platform - Docker Compose (Final)
 # -------------------------------------------
 # Services: postgres, redis, migrate, api, inference, worker, scheduler, frontend
 # GPU passthrough requires NVIDIA Container Toolkit.
@@ -143,6 +143,8 @@ services:
       GPU_MEMORY_RESERVATION_MB: ${GPU_MEMORY_RESERVATION_MB:-4096}
       TRAINING_DEFAULT_EPOCHS: ${TRAINING_DEFAULT_EPOCHS:-100}
       TRAINING_DEFAULT_BATCH_SIZE: ${TRAINING_DEFAULT_BATCH_SIZE:-16}
+      NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
+      NVIDIA_DRIVER_CAPABILITIES: ${NVIDIA_DRIVER_CAPABILITIES:-compute,utility}
     volumes:
       - ${HOST_MODELS_DIR:-./models}:/data/models
       - ${HOST_DATASETS_DIR:-./datasets}:/data/datasets
@@ -161,6 +163,13 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: ${GPU_COUNT:-1}
+              capabilities: [gpu]
 
   worker:
     build:
@@ -189,6 +198,8 @@ services:
       GPU_MEMORY_RESERVATION_MB: ${GPU_MEMORY_RESERVATION_MB:-4096}
       TRAINING_DEFAULT_EPOCHS: ${TRAINING_DEFAULT_EPOCHS:-100}
       TRAINING_DEFAULT_BATCH_SIZE: ${TRAINING_DEFAULT_BATCH_SIZE:-16}
+      NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
+      NVIDIA_DRIVER_CAPABILITIES: ${NVIDIA_DRIVER_CAPABILITIES:-compute,utility}
     volumes:
       - ${HOST_MODELS_DIR:-./models}:/data/models
       - ${HOST_DATASETS_DIR:-./datasets}:/data/datasets
@@ -209,6 +220,13 @@ services:
         condition: service_completed_successfully
     networks:
       - platform-net
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: ${GPU_COUNT:-1}
+              capabilities: [gpu]
 
   # --- Celery Beat Scheduler ------------------------------------------------
   scheduler:
