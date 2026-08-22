@@ -6,6 +6,9 @@ import type {
   ModelBindingRelease,
   Dataset,
   TrainingTask,
+  TrainingLogs,
+  TrainingMetrics,
+  TrainingCheckpoint,
   Evaluation,
   ResourceStatus,
 } from "./api";
@@ -390,6 +393,51 @@ export const mockApi: ApiClient = {
     };
     trainingTasks.unshift(task);
     return task;
+  },
+
+  async getTrainingLogs(taskId: string): Promise<TrainingLogs> {
+    await delay(60);
+    const task = trainingTasks.find((t) => t.id === taskId);
+    if (!task) throw new Error("Task not found");
+    return {
+      taskId: task.id,
+      status: task.status,
+      currentEpoch: task.currentEpoch || 0,
+      totalEpochs: task.epochs,
+      attempts: task.status === "running"
+        ? [{ attemptNo: 1, status: "running", currentEpoch: task.currentEpoch || 0, logPath: null, startedAt: task.startedAt || null, finishedAt: null, lastError: null }]
+        : [],
+    };
+  },
+
+  async getTrainingMetrics(taskId: string): Promise<TrainingMetrics> {
+    await delay(60);
+    const task = trainingTasks.find((t) => t.id === taskId);
+    if (!task) throw new Error("Task not found");
+    const epochs = [];
+    const count = task.currentEpoch || 0;
+    for (let e = 1; e <= count; e++) {
+      epochs.push({ epoch: e, loss: 1.0 - e * 0.05, lr: 0.001, extra: {} });
+    }
+    return {
+      taskId: task.id,
+      epochs,
+      bestLoss: epochs.length > 0 ? epochs[epochs.length - 1].loss : null,
+    };
+  },
+
+  async getTrainingCheckpoint(taskId: string): Promise<TrainingCheckpoint> {
+    await delay(60);
+    const task = trainingTasks.find((t) => t.id === taskId);
+    if (!task) throw new Error("Task not found");
+    const epoch = task.currentEpoch || 0;
+    return {
+      taskId: task.id,
+      attemptNo: task.status === "running" ? 1 : null,
+      latestCheckpoint: epoch > 0
+        ? { epoch, artifactPath: `/artifacts/epoch_${epoch}.pt`, artifactHash: `sha256:ep${epoch}`, metrics: { loss: 1.0 - epoch * 0.05, mAP50: epoch * 0.02 }, createdAt: new Date().toISOString() }
+        : null,
+    };
   },
 
   async getEvaluations(): Promise<Evaluation[]> {

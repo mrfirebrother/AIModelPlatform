@@ -49,6 +49,7 @@ def create_app(
         models_router,
         releases_router,
         resources_router,
+        training_logs_router,
         training_router,
     )
 
@@ -57,6 +58,7 @@ def create_app(
     app.include_router(bindings_router)
     app.include_router(datasets_router)
     app.include_router(training_router)
+    app.include_router(training_logs_router)
     app.include_router(evaluations_router)
     app.include_router(releases_router)
     app.include_router(resources_router)

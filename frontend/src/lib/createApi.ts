@@ -58,6 +58,9 @@ const realApi: ApiClient = {
   getDatasets: () => fetchJson<any>("/api/datasets").then((r) => r.datasets ?? r),
   getTrainingTasks: () => fetchJson<any>("/api/training/tasks").then((r) => r.tasks ?? r),
   createTrainingTask: (data) => postJson("/api/training/tasks", data),
+  getTrainingLogs: (taskId: string) => fetchJson<any>(`/api/training/${taskId}/logs`),
+  getTrainingMetrics: (taskId: string) => fetchJson<any>(`/api/training/${taskId}/metrics`),
+  getTrainingCheckpoint: (taskId: string) => fetchJson<any>(`/api/training/${taskId}/checkpoint`),
   getEvaluations: () => fetchJson<any>("/api/evaluations").then((r) => r.evaluations ?? r),
   getResourceStatus: () => fetchJson("/api/resources/gpu").then((r) => r.resources?.[0] ?? r),
   loadModel: (modelNodeId) =>

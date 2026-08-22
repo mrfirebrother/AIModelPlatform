@@ -90,6 +90,51 @@ export interface TrainingTask {
   completedAt?: string;
 }
 
+export interface TrainingAttemptLog {
+  attemptNo: number;
+  status: string;
+  currentEpoch: number;
+  logPath: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+  lastError: string | null;
+}
+
+export interface TrainingLogs {
+  taskId: string;
+  status: string;
+  currentEpoch: number;
+  totalEpochs: number;
+  attempts: TrainingAttemptLog[];
+}
+
+export interface EpochMetrics {
+  epoch: number;
+  loss: number;
+  lr: number | null;
+  extra: Record<string, unknown>;
+}
+
+export interface TrainingMetrics {
+  taskId: string;
+  epochs: EpochMetrics[];
+  bestLoss: number | null;
+}
+
+export interface CheckpointInfo {
+  epoch: number;
+  artifactPath: string;
+  artifactHash: string;
+  metrics: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface TrainingCheckpoint {
+  taskId: string;
+  attemptNo: number | null;
+  latestCheckpoint: CheckpointInfo | null;
+}
+
 export interface Evaluation {
   id: string;
   modelNodeId: string;
@@ -163,6 +208,9 @@ export interface ApiClient {
   getDatasets(): Promise<Dataset[]>;
   getTrainingTasks(): Promise<TrainingTask[]>;
   createTrainingTask(data: Partial<TrainingTask>): Promise<TrainingTask>;
+  getTrainingLogs(taskId: string): Promise<TrainingLogs>;
+  getTrainingMetrics(taskId: string): Promise<TrainingMetrics>;
+  getTrainingCheckpoint(taskId: string): Promise<TrainingCheckpoint>;
   getEvaluations(): Promise<Evaluation[]>;
   getResourceStatus(): Promise<ResourceStatus>;
   loadModel(modelNodeId: string): Promise<boolean>;
