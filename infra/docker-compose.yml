@@ -1,0 +1,274 @@
+﻿# AI Model Platform - Docker Compose (Final)
+# -------------------------------------------
+# Services: postgres, redis, migrate, api, inference, worker, scheduler, frontend
+# GPU passthrough requires NVIDIA Container Toolkit.
+#
+# Usage:
+#   cp .env.example .env   # edit values
+#   docker compose up -d
+#
+# See docs/operations/first-run.md for full setup guide.
+
+services:
+  # --- Infrastructure -------------------------------------------------------
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ai_platform}
+      POSTGRES_USER: ${POSTGRES_USER:-ai_platform}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+    volumes:
+      - ${HOST_POSTGRES_DIR:-./postgres}:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_EXTERNAL_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    networks:
+      - platform-net
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - ${HOST_REDIS_DIR:-./redis}:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+    networks:
+      - platform-net
+
+  # --- Database Migration (one-shot) ----------------------------------------
+  migrate:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    restart: "no"
+    command: ["sh", "-c", "alembic upgrade head"]
+    environment:
+      POSTGRES_URL: ${POSTGRES_URL:-}
+      POSTGRES_HOST: ${POSTGRES_HOST:-postgres}
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      POSTGRES_DB: ${POSTGRES_DB:-ai_platform}
+      POSTGRES_USER: ${POSTGRES_USER:-ai_platform}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - platform-net
+
+  # --- API Server -----------------------------------------------------------
+  api:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${API_EXTERNAL_PORT:-8000}:8000"
+    environment:
+      POSTGRES_URL: ${POSTGRES_URL:-}
+      POSTGRES_HOST: ${POSTGRES_HOST:-postgres}
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      POSTGRES_DB: ${POSTGRES_DB:-ai_platform}
+      POSTGRES_USER: ${POSTGRES_USER:-ai_platform}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      MODEL_DIR: /data/models
+      DATASET_DIR: /data/datasets
+      LOG_DIR: /data/logs
+      CHECKPOINT_DIR: /data/checkpoints
+      GPU_DEVICE: ${GPU_DEVICE:-0}
+      GPU_READY: ${GPU_READY:-false}
+      WORKER_READY: ${WORKER_READY:-false}
+      PLATFORM_API_KEY: ${PLATFORM_API_KEY:-change-me}
+      MAX_INFERENCE_INPUT_BYTES: ${MAX_INFERENCE_INPUT_BYTES:-10485760}
+      MAX_INFERENCE_CONCURRENCY: ${MAX_INFERENCE_CONCURRENCY:-1}
+      GPU_MEMORY_RESERVATION_MB: ${GPU_MEMORY_RESERVATION_MB:-4096}
+      TRAINING_DEFAULT_EPOCHS: ${TRAINING_DEFAULT_EPOCHS:-100}
+      TRAINING_DEFAULT_BATCH_SIZE: ${TRAINING_DEFAULT_BATCH_SIZE:-16}
+    volumes:
+      - ${HOST_MODELS_DIR:-./models}:/data/models
+      - ${HOST_DATASETS_DIR:-./datasets}:/data/datasets
+      - ${HOST_LOGS_DIR:-./logs}:/data/logs
+      - ${HOST_CHECKPOINTS_DIR:-./checkpoints}:/data/checkpoints
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/live')"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      - platform-net
+
+  # --- GPU Inference Worker -------------------------------------------------
+  inference:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: ["python", "-c", "import time; print('inference placeholder ready'); time.sleep(2147483647)"]
+    environment:
+      POSTGRES_URL: ${POSTGRES_URL:-}
+      POSTGRES_HOST: ${POSTGRES_HOST:-postgres}
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      POSTGRES_DB: ${POSTGRES_DB:-ai_platform}
+      POSTGRES_USER: ${POSTGRES_USER:-ai_platform}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      MODEL_DIR: /data/models
+      DATASET_DIR: /data/datasets
+      LOG_DIR: /data/logs
+      CHECKPOINT_DIR: /data/checkpoints
+      GPU_DEVICE: ${GPU_DEVICE:-0}
+      GPU_READY: ${GPU_READY:-false}
+      WORKER_READY: ${WORKER_READY:-false}
+      PLATFORM_API_KEY: ${PLATFORM_API_KEY:-change-me}
+      MAX_INFERENCE_INPUT_BYTES: ${MAX_INFERENCE_INPUT_BYTES:-10485760}
+      MAX_INFERENCE_CONCURRENCY: ${MAX_INFERENCE_CONCURRENCY:-1}
+      GPU_MEMORY_RESERVATION_MB: ${GPU_MEMORY_RESERVATION_MB:-4096}
+      TRAINING_DEFAULT_EPOCHS: ${TRAINING_DEFAULT_EPOCHS:-100}
+      TRAINING_DEFAULT_BATCH_SIZE: ${TRAINING_DEFAULT_BATCH_SIZE:-16}
+    volumes:
+      - ${HOST_MODELS_DIR:-./models}:/data/models
+      - ${HOST_DATASETS_DIR:-./datasets}:/data/datasets
+      - ${HOST_LOGS_DIR:-./logs}:/data/logs
+      - ${HOST_CHECKPOINTS_DIR:-./checkpoints}:/data/checkpoints
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os; os.kill(1, 0)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  worker:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: ["celery", "-A", "app.workers.celery_app", "worker", "-Q", "training,evaluation,default", "--concurrency=1", "--loglevel=INFO"]
+    environment:
+      POSTGRES_URL: ${POSTGRES_URL:-}
+      POSTGRES_HOST: ${POSTGRES_HOST:-postgres}
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      POSTGRES_DB: ${POSTGRES_DB:-ai_platform}
+      POSTGRES_USER: ${POSTGRES_USER:-ai_platform}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      MODEL_DIR: /data/models
+      DATASET_DIR: /data/datasets
+      LOG_DIR: /data/logs
+      CHECKPOINT_DIR: /data/checkpoints
+      GPU_DEVICE: ${GPU_DEVICE:-0}
+      GPU_READY: ${GPU_READY:-false}
+      WORKER_READY: ${WORKER_READY:-false}
+      PLATFORM_API_KEY: ${PLATFORM_API_KEY:-change-me}
+      MAX_INFERENCE_INPUT_BYTES: ${MAX_INFERENCE_INPUT_BYTES:-10485760}
+      MAX_INFERENCE_CONCURRENCY: ${MAX_INFERENCE_CONCURRENCY:-1}
+      GPU_MEMORY_RESERVATION_MB: ${GPU_MEMORY_RESERVATION_MB:-4096}
+      TRAINING_DEFAULT_EPOCHS: ${TRAINING_DEFAULT_EPOCHS:-100}
+      TRAINING_DEFAULT_BATCH_SIZE: ${TRAINING_DEFAULT_BATCH_SIZE:-16}
+    volumes:
+      - ${HOST_MODELS_DIR:-./models}:/data/models
+      - ${HOST_DATASETS_DIR:-./datasets}:/data/datasets
+      - ${HOST_LOGS_DIR:-./logs}:/data/logs
+      - ${HOST_CHECKPOINTS_DIR:-./checkpoints}:/data/checkpoints
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os; os.kill(1, 0)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      - platform-net
+
+  # --- Celery Beat Scheduler ------------------------------------------------
+  scheduler:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: ["celery", "-A", "app.workers.celery_app", "beat", "--loglevel=INFO"]
+    environment:
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      POSTGRES_URL: ${POSTGRES_URL:-}
+      POSTGRES_HOST: ${POSTGRES_HOST:-postgres}
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      POSTGRES_DB: ${POSTGRES_DB:-ai_platform}
+      POSTGRES_USER: ${POSTGRES_USER:-ai_platform}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+      MODEL_DIR: /data/models
+      DATASET_DIR: /data/datasets
+      LOG_DIR: /data/logs
+      CHECKPOINT_DIR: /data/checkpoints
+      GPU_DEVICE: ${GPU_DEVICE:-0}
+      GPU_READY: ${GPU_READY:-false}
+      WORKER_READY: ${WORKER_READY:-false}
+      PLATFORM_API_KEY: ${PLATFORM_API_KEY:-change-me}
+      MAX_INFERENCE_INPUT_BYTES: ${MAX_INFERENCE_INPUT_BYTES:-10485760}
+      MAX_INFERENCE_CONCURRENCY: ${MAX_INFERENCE_CONCURRENCY:-1}
+      GPU_MEMORY_RESERVATION_MB: ${GPU_MEMORY_RESERVATION_MB:-4096}
+      TRAINING_DEFAULT_EPOCHS: ${TRAINING_DEFAULT_EPOCHS:-100}
+      TRAINING_DEFAULT_BATCH_SIZE: ${TRAINING_DEFAULT_BATCH_SIZE:-16}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os; os.kill(1, 0)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      - platform-net
+
+  # --- Frontend (React + Nginx) ---------------------------------------------
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_EXTERNAL_PORT:-8080}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - platform-net
+
+# --- Networks ----------------------------------------------------------------
+networks:
+  platform-net:
+    driver: bridge
