@@ -40,10 +40,10 @@ function Sidebar() {
     <aside className="sidebar">
       <div className="brand">
         <div className="brand-mark">
-          <i /> 模型运维台
+          <i /> AI Model Platform
         </div>
         <h1>AI 模型<br />服务平台</h1>
-        <p>现场智能分析 / 01</p>
+        <p>模型运维台</p>
       </div>
 
       <div className="nav-label">工作台</div>
