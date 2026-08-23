@@ -373,6 +373,16 @@ export const mockApi: ApiClient = {
     return node;
   },
 
+  async deleteModel(id: string): Promise<boolean> {
+    await delay(100);
+    const idx = modelNodes.findIndex((n) => n.id === id);
+    if (idx >= 0) {
+      modelNodes.splice(idx, 1);
+      return true;
+    }
+    return false;
+  },
+
   async getBindings(): Promise<ModelBinding[]> {
     await delay(60);
     return [...bindings];

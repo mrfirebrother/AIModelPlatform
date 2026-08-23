@@ -13,7 +13,9 @@ from backend.app.api.dependencies import get_effective_settings, get_db, verify_
 from backend.app.observability.operation_log import log_operation
 from backend.app.repositories.model_repository import (
     create_model_node,
+    delete_model_node,
     get_model_node,
+    list_child_models,
     list_root_models,
 )
 from backend.app.schemas.model import (
@@ -34,6 +36,13 @@ def create_model(
     db: Session = Depends(get_db),
     _key: str = Depends(verify_api_key),
 ) -> Any:
+    if payload.parent_id is None:
+        existing_roots = list_root_models(db)
+        if existing_roots:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Only one root model is allowed. Delete the existing root model first.",
+            )
     try:
         model = create_model_node(
             db,
@@ -175,3 +184,32 @@ async def upload_model(
         "size": total,
         "sha256": f"sha256:{sha256.hexdigest()}",
     }
+
+
+@router.delete("/{model_id}")
+def delete_model(
+    model_id: UUID,
+    db: Session = Depends(get_db),
+    _key: str = Depends(verify_api_key),
+) -> Any:
+    model = get_model_node(db, model_id)
+    if model is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Model not found")
+
+    children = list_child_models(db, model_id)
+    if children:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot delete model with children. Delete child models first.",
+        )
+
+    delete_model_node(db, model_id)
+    log_operation(
+        db,
+        operation_type="model.delete",
+        resource_type="model_node",
+        resource_id=model_id,
+        status="success",
+        summary_json={"model_id": str(model_id)},
+    )
+    return {"deleted": True}

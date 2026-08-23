@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { createApi } from "../../lib/createApi";
+import { useToast } from "../../lib/toast";
 import type { ModelNode } from "../../lib/api";
 
 export default function ModelsPage() {
   const api = useMemo(() => createApi(), []);
   const navigate = useNavigate();
+  const toast = useToast();
   const [nodes, setNodes] = useState<ModelNode[]>([]);
   const [filter, setFilter] = useState<string>("all");
   const [showImport, setShowImport] = useState(false);
@@ -13,6 +15,7 @@ export default function ModelsPage() {
   const [uploadPct, setUploadPct] = useState<number | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [deleting, setDeleting] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadNodes = () => api.getModelNodes().then(setNodes);
@@ -49,9 +52,23 @@ export default function ModelsPage() {
     if (file) handleFile(file);
   };
 
+  const handleDelete = async (modelId: string) => {
+    const confirmed = await toast.confirm("确定要删除此模型吗？");
+    if (!confirmed) return;
+    setDeleting(modelId);
+    try {
+      await api.deleteModel(modelId);
+      toast.success("模型已删除");
+      loadNodes();
+    } catch (err) {
+      toast.error("删除失败: " + (err as Error).message);
+    }
+    setDeleting(null);
+  };
+
   const roots = nodes.filter((n) => n.parentId === null);
-  const byParent = (pid: string) => nodes.filter((n) => n.parentId === pid);
   const filteredRoots = filter === "all" ? roots : roots.filter((r) => r.status === filter);
+  const hasRoot = roots.length > 0;
 
   return (
     <>
@@ -62,7 +79,15 @@ export default function ModelsPage() {
           <option value="candidate">候选</option>
           <option value="archived">已归档</option>
         </select>
-        <button className="btn primary" onClick={() => setShowImport(true)} style={{ marginLeft: "auto" }}>+ 导入根模型</button>
+        <button
+          className="btn primary"
+          disabled={hasRoot}
+          onClick={() => setShowImport(true)}
+          style={{ marginLeft: "auto", opacity: hasRoot ? 0.5 : 1, cursor: hasRoot ? "not-allowed" : "pointer" }}
+          title={hasRoot ? "已存在根模型，请先删除后再导入" : ""}
+        >
+          + 导入根模型
+        </button>
       </div>
 
       {showImport && (
@@ -86,7 +111,7 @@ export default function ModelsPage() {
             <input ref={fileInputRef} type="file" accept=".pt" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
             {uploading ? (
               <>
-                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>{"\u4e0a\u4f20\u4e2d..."}</div>
+                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>上传中...</div>
                 <div style={{ width: 200, height: 6, background: "#e0e0e0", borderRadius: 3, margin: "0 auto" }}>
                   <div style={{ width: `${uploadPct ?? 0}%`, height: "100%", background: "#1766ad", borderRadius: 3, transition: "width 0.3s" }} />
                 </div>
@@ -94,56 +119,152 @@ export default function ModelsPage() {
               </>
             ) : (
               <>
-                <div style={{ fontSize: 40, marginBottom: 8, color: "#ccc" }}>{"\u2b07"}</div>
-                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{"\u62d6\u653e .pt \u6587\u4ef6\u5230\u6b64\u5904"}</div>
-                <div style={{ fontSize: 11, color: "#999" }}>{"\u6216\u70b9\u51fb\u9009\u62e9\u6587\u4ef6 \u00b7 \u6700\u5927 500MB"}</div>
+                <div style={{ fontSize: 40, marginBottom: 8, color: "#ccc" }}>⬆</div>
+                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>拖放 .pt 文件到此处</div>
+                <div style={{ fontSize: 11, color: "#999" }}>或点击选择文件 · 最大 500MB</div>
               </>
             )}
           </div>
           {uploadError && <div style={{ marginTop: 10, color: "#b33", fontSize: 12 }}>{uploadError}</div>}
           <div style={{ marginTop: 14, display: "flex", gap: 8 }}>
-            <button className="btn" onClick={() => { setShowImport(false); setUploadError(null); }}>{"\u53d6\u6d88"}</button>
+            <button className="btn" onClick={() => { setShowImport(false); setUploadError(null); }}>取消</button>
           </div>
         </div>
       )}
 
       {filteredRoots.map((root) => (
-        <div key={root.id} className="card" style={{ marginBottom: 14 }}>
-          <div className="card-head">
-            <div>
-              <div className="card-title">{"\u6839\u6a21\u578b\u8c31\u7cfb"}</div>
-              <div className="card-kicker">{root.name} {"\u00b7"} {root.modelFamily} {"\u00b7"} {"\u4e0d\u53ef\u53d8\u8282\u70b9"}</div>
-            </div>
-            <span className="badge badge-green">{root.status}</span>
-          </div>
-          <div className="tree-container">
-            <TreeNode node={root} children={byParent(root.id)} allNodes={nodes} onNavigate={(id) => navigate(`/models/${id}`)} />
-          </div>
-        </div>
+        <ModelTree
+          key={root.id}
+          root={root}
+          allNodes={nodes}
+          onNavigate={(id) => navigate(`/models/${id}`)}
+          onDelete={handleDelete}
+          deleting={deleting}
+        />
       ))}
 
-      {filteredRoots.length === 0 && <div className="empty-state">{"\u6682\u65e0\u6a21\u578b\u8282\u70b9"}</div>}
+      {filteredRoots.length === 0 && <div className="empty-state">暂无模型节点</div>}
     </>
   );
 }
 
-function TreeNode({ node, children, allNodes, onNavigate }: { node: ModelNode; children: ModelNode[]; allNodes: ModelNode[]; onNavigate: (id: string) => void }) {
-  const grandchildren = (pid: string) => allNodes.filter((n) => n.parentId === pid);
+function ModelTree({ root, allNodes, onNavigate, onDelete, deleting }: {
+  root: ModelNode;
+  allNodes: ModelNode[];
+  onNavigate: (id: string) => void;
+  onDelete: (id: string) => void;
+  deleting: string | null;
+}) {
+  const byParent = (pid: string) => allNodes.filter((n) => n.parentId === pid);
+  const children = byParent(root.id);
+  const hasChildren = children.length > 0;
+
   return (
-    <div>
-      <div className={`tree-node ${node.parentId === null ? "root" : ""}`} onClick={() => onNavigate(node.id)}>
-        <div className="node-header">
-          <span className="node-kind">{node.parentId === null ? "\u6839\u6a21\u578b" : "\u4efb\u52a1\u6a21\u578b"}</span>
-          <span className="node-state">{node.status === "approved" ? "\u5df2\u6279\u51c6" : node.status === "candidate" ? "\u5019\u9009" : node.status}</span>
+    <div className="model-tree-card">
+      <div className="tree-card-header">
+        <div className="tree-card-info">
+          <div className="tree-card-title">模型谱系</div>
+          <div className="tree-card-subtitle">{root.name || root.modelFamily} · {root.modelFamily}</div>
         </div>
-        <div className="node-name">{node.name}</div>
-        <div className="node-id">{node.id} {"\u00b7"} {node.labelSchemaName}</div>
+        <div className="tree-card-actions">
+          <span className={`badge badge-${root.status === "approved" ? "green" : root.status === "candidate" ? "orange" : "gray"}`}>
+            {root.status === "approved" ? "已批准" : root.status === "candidate" ? "候选" : root.status}
+          </span>
+          {!hasChildren && (
+            <button
+              className="btn small danger"
+              onClick={() => onDelete(root.id)}
+              disabled={deleting === root.id}
+              style={{ marginLeft: 8 }}
+            >
+              {deleting === root.id ? "删除中..." : "删除"}
+            </button>
+          )}
+        </div>
       </div>
-      {children.length > 0 && (
-        <div className="tree-children">
-          {children.map((child) => (
-            <TreeNode key={child.id} node={child} children={grandchildren(child.id)} allNodes={allNodes} onNavigate={onNavigate} />
-          ))}
+
+      <div className="tree-visual">
+        <TreeNodeCard
+          node={root}
+          isRoot={true}
+          onNavigate={onNavigate}
+        />
+
+        {children.length > 0 && (
+          <div className="tree-subtree">
+            <div className="tree-connector-vertical" />
+            <div className="tree-children-row">
+              {children.map((child, idx) => (
+                <TreeNodeBranch
+                  key={child.id}
+                  node={child}
+                  allNodes={allNodes}
+                  onNavigate={onNavigate}
+                  isLast={idx === children.length - 1}
+                  isFirst={idx === 0}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TreeNodeCard({ node, isRoot, onNavigate }: {
+  node: ModelNode;
+  isRoot: boolean;
+  onNavigate: (id: string) => void;
+}) {
+  return (
+    <div
+      className={`tree-node-card ${isRoot ? "root" : "child"}`}
+      onClick={() => onNavigate(node.id)}
+    >
+      <div className="node-type">{isRoot ? "根模型" : "子模型"}</div>
+      <div className="node-name">{node.name || node.modelFamily || "未命名"}</div>
+      <div className="node-meta">{node.modelFamily} · {node.id.slice(0, 8)}...</div>
+    </div>
+  );
+}
+
+function TreeNodeBranch({ node, allNodes, onNavigate, isLast, isFirst }: {
+  node: ModelNode;
+  allNodes: ModelNode[];
+  onNavigate: (id: string) => void;
+  isLast: boolean;
+  isFirst: boolean;
+}) {
+  const byParent = (pid: string) => allNodes.filter((n) => n.parentId === pid);
+  const children = byParent(node.id);
+  const hasChildren = children.length > 0;
+
+  return (
+    <div className="tree-branch">
+      <div className="tree-branch-connector">
+        <svg width="100%" height="30" viewBox="0 0 100 30" preserveAspectRatio="none">
+          <path d="M 50 0 L 50 30" stroke="#2d83c5" strokeWidth="2" fill="none" />
+        </svg>
+      </div>
+
+      <TreeNodeCard node={node} isRoot={false} onNavigate={onNavigate} />
+
+      {hasChildren && (
+        <div className="tree-subtree">
+          <div className="tree-connector-vertical" />
+          <div className="tree-children-row">
+            {children.map((child, idx) => (
+              <TreeNodeBranch
+                key={child.id}
+                node={child}
+                allNodes={allNodes}
+                onNavigate={onNavigate}
+                isLast={idx === children.length - 1}
+                isFirst={idx === 0}
+              />
+            ))}
+          </div>
         </div>
       )}
     </div>

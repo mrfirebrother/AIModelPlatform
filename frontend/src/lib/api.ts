@@ -243,6 +243,7 @@ export interface ApiClient {
   getModelNodes(): Promise<ModelNode[]>;
   getModelNode(id: string): Promise<ModelNode | null>;
   createModelNode(data: Partial<ModelNode>): Promise<ModelNode>;
+  deleteModel(id: string): Promise<boolean>;
   getBindings(): Promise<ModelBinding[]>;
   getReleases(bindingId?: string): Promise<ModelBindingRelease[]>;
   getDatasets(): Promise<Dataset[]>;

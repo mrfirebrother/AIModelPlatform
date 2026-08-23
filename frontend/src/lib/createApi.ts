@@ -24,6 +24,15 @@ async function postJson<T>(path: string, body?: unknown): Promise<T> {
   return res.json();
 }
 
+async function deleteJson<T>(path: string): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: "DELETE",
+    headers: { "X-API-Key": import.meta.env.VITE_API_KEY || "change-me" },
+  });
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  return res.json();
+}
+
 async function uploadFile<T>(
   path: string,
   file: File,
@@ -106,6 +115,7 @@ const realApi: ApiClient = {
   getModelNodes: () => fetchJson<any>("/api/models").then((r) => camelizeKeys(r.models ?? r)),
   getModelNode: (id) => fetchJson<any>(`/api/models/${id}`).then(camelizeKeys).catch(() => null),
   createModelNode: (data) => postJson<any>("/api/models", data),
+  deleteModel: (id) => deleteJson<any>(`/api/models/${id}`).then(() => true),
   getBindings: () => fetchJson<any>("/api/bindings").then((r) => camelizeKeys(r.bindings ?? r)),
   getReleases: (bindingId) =>
     fetchJson<any>(bindingId ? `/api/bindings/${bindingId}/releases` : "/api/releases").then((r) => camelizeKeys(r.releases ?? r)),

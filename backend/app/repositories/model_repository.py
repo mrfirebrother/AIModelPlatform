@@ -68,6 +68,22 @@ def list_child_models(session: Session, parent_id: UUID) -> list[ModelNode]:
     return list(session.execute(stmt).scalars().all())
 
 
+def has_children(session: Session, model_id: UUID) -> bool:
+    stmt = select(ModelNode).where(ModelNode.parent_id == model_id).limit(1)
+    return session.execute(stmt).scalar() is not None
+
+
+def delete_model_node(session: Session, model_id: UUID) -> bool:
+    model = session.get(ModelNode, model_id)
+    if model is None:
+        return False
+    if has_children(session, model_id):
+        raise ValueError("Cannot delete model with children")
+    session.delete(model)
+    session.flush()
+    return True
+
+
 def validate_label_schema_compatibility(
     session: Session,
     model_id: UUID,
