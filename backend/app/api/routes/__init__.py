@@ -10,6 +10,7 @@ from .evaluations import router as evaluations_router
 from .releases import router as releases_router
 from .resources import router as resources_router
 from .infer import router as infer_router
+from .inference import router as inference_router
 from .gpu import router as gpu_router
 
 __all__ = [
@@ -23,5 +24,6 @@ __all__ = [
     "releases_router",
     "resources_router",
     "infer_router",
+    "inference_router",
     "gpu_router",
 ]

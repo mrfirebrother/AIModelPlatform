@@ -6,12 +6,24 @@
     ReleaseResponse,
     RollbackCreate,
 )
+from .inference import (
+    InferenceBatchRequest,
+    InferenceBatchResponse,
+    InferenceRequest,
+    InferenceResponse,
+    ModelInfoResponse,
+)
 from .model import ModelNodeCreate, ModelNodeListResponse, ModelNodeResponse, ModelNodeStatusUpdate
 
 __all__ = [
     "BindingCreate",
     "BindingListResponse",
     "BindingResponse",
+    "InferenceBatchRequest",
+    "InferenceBatchResponse",
+    "InferenceRequest",
+    "InferenceResponse",
+    "ModelInfoResponse",
     "ModelNodeCreate",
     "ModelNodeListResponse",
     "ModelNodeResponse",
