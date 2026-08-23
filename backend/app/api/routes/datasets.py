@@ -62,6 +62,7 @@ def create_dataset(
     payload: DatasetCreate,
     db: Session = Depends(get_db),
     _key: str = Depends(verify_api_key),
+    settings: Any = Depends(get_effective_settings),
 ) -> Any:
     try:
         name = payload.name
@@ -75,8 +76,29 @@ def create_dataset(
 
         # If source_path is provided, validate and create snapshot
         if payload.source_path:
-            source_dir = Path(payload.source_path)
-            if source_dir.exists() and source_dir.is_dir():
+            source_path = Path(payload.source_path)
+            # If it's a zip file, extract it first
+            if source_path.exists() and source_path.is_file():
+                import zipfile
+                extract_dir = Path(settings.dataset_dir) / "extracted" / str(dataset.id)
+                extract_dir.mkdir(parents=True, exist_ok=True)
+                with zipfile.ZipFile(source_path, 'r') as zf:
+                    zf.extractall(extract_dir)
+                # Find the actual dataset directory (might be nested)
+                data_yaml = extract_dir / "data.yaml"
+                if not data_yaml.exists():
+                    # Check subdirectories
+                    for sub in extract_dir.iterdir():
+                        if sub.is_dir() and (sub / "data.yaml").exists():
+                            extract_dir = sub
+                            break
+                source_dir = extract_dir
+            elif source_path.exists() and source_path.is_dir():
+                source_dir = source_path
+            else:
+                source_dir = None
+
+            if source_dir and source_dir.exists():
                 from backend.app.services.dataset_validation import validate_yolo_dataset
                 validation = validate_yolo_dataset(source_dir)
                 if validation.is_valid:
