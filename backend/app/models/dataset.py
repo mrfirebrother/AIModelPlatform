@@ -15,6 +15,7 @@ class Dataset(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     name: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
     description: Mapped[str | None] = mapped_column(Text)
+    source_path: Mapped[str | None] = mapped_column(String(1024))
     metadata_json: Mapped[dict[str, Any]] = json_column()
 
     snapshots: Mapped[List[DatasetSnapshot]] = relationship(
