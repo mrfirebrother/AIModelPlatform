@@ -40,6 +40,7 @@ def create_app(
     app = FastAPI(title="AI Model Platform API", version="0.1.0")
 
     from .api.routes import (
+        backup_router,
         bindings_router,
         datasets_router,
         evaluations_router,
@@ -68,6 +69,7 @@ def create_app(
     app.include_router(inference_router)
     app.include_router(gpu_router)
     app.include_router(operations_router)
+    app.include_router(backup_router)
 
     @app.get("/health/live")
     async def liveness() -> dict[str, str]:

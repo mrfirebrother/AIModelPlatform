@@ -1,4 +1,12 @@
-﻿from .binding import (
+﻿from .backup import (
+    BackupCreate,
+    BackupListResponse,
+    BackupResponse,
+    BackupRestoreRequest,
+    BackupRestoreResponse,
+    BackupVerifyResponse,
+)
+from .binding import (
     BindingCreate,
     BindingListResponse,
     BindingResponse,
@@ -16,6 +24,12 @@ from .inference import (
 from .model import ModelNodeCreate, ModelNodeListResponse, ModelNodeResponse, ModelNodeStatusUpdate
 
 __all__ = [
+    "BackupCreate",
+    "BackupListResponse",
+    "BackupResponse",
+    "BackupRestoreRequest",
+    "BackupRestoreResponse",
+    "BackupVerifyResponse",
     "BindingCreate",
     "BindingListResponse",
     "BindingResponse",
