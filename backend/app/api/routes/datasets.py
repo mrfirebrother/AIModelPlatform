@@ -63,7 +63,12 @@ def create_dataset(
     _key: str = Depends(verify_api_key),
 ) -> Any:
     try:
-        dataset = Dataset(name=payload.name, description=payload.description)
+        name = payload.name
+        suffix = 1
+        while db.query(Dataset).filter(Dataset.name == name).first():
+            name = f"{payload.name}_{suffix}"
+            suffix += 1
+        dataset = Dataset(name=name, description=payload.description)
         db.add(dataset)
         db.flush()
         log_operation(
@@ -72,7 +77,7 @@ def create_dataset(
             resource_type="dataset",
             resource_id=dataset.id,
             status="success",
-            summary_json={"dataset_id": str(dataset.id), "name": payload.name},
+            summary_json={"dataset_id": str(dataset.id), "name": name},
         )
         return dataset
     except Exception as exc:
