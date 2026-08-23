@@ -14,14 +14,23 @@ from sqlalchemy.orm import Session
 from backend.app.models import BackupRecord, DatasetSnapshot, ModelNode
 from backend.app.storage.artifacts import ContentAddressedStore, compute_file_hash
 
+from .db_backup import DbBackupService
+
 
 class BackupService:
     """Core backup and restore logic for models, datasets, and metadata."""
 
-    def __init__(self, backup_dir: Path | None = None) -> None:
+    def __init__(
+        self,
+        backup_dir: Path | None = None,
+        db_backup_service: DbBackupService | None = None,
+    ) -> None:
         self._backup_dir = backup_dir or Path("/data/backups")
         self._backup_dir.mkdir(parents=True, exist_ok=True)
         self._store = ContentAddressedStore(self._backup_dir / "artifacts")
+        self._db_backup = db_backup_service or DbBackupService(
+            backup_dir=self._backup_dir / "db",
+        )
 
     def create_backup(
         self,
@@ -58,6 +67,22 @@ class BackupService:
         manifest_path.write_text(json.dumps(manifest, indent=2, default=str), encoding="utf-8")
         artifact_hash = compute_file_hash(manifest_path)
 
+        db_dump_path = backup_path / "db_dump.sql"
+        db_dump_meta: dict[str, Any] = {}
+        try:
+            from backend.app.config import get_settings
+            settings = get_settings()
+            db_dump_meta = self._db_backup.dump(
+                db_url=settings.postgres_url,
+                output_path=db_dump_path,
+                backup_type=backup_type,
+            )
+        except Exception as exc:
+            db_dump_meta = {"success": False, "error": str(exc)}
+
+        merged_meta = dict(metadata_json or {})
+        merged_meta["db_dump"] = db_dump_meta
+
         record = BackupRecord(
             id=backup_id,
             name=name,
@@ -66,7 +91,7 @@ class BackupService:
             scope_json=scope_json or {},
             artifact_path=str(backup_path),
             artifact_hash=artifact_hash,
-            metadata_json=metadata_json or {},
+            metadata_json=merged_meta,
             status="completed",
         )
         session.add(record)
@@ -212,6 +237,20 @@ class BackupService:
             raise ValueError("Backup must be verified before restore (use force=True to bypass)")
 
         restore_id = uuid4()
+        db_restore_meta: dict[str, Any] = {}
+        try:
+            backup_path = Path(record.artifact_path)
+            db_dump_path = backup_path / "db_dump.sql"
+            if db_dump_path.exists():
+                from backend.app.config import get_settings
+                settings = get_settings()
+                db_restore_meta = self._db_backup.restore(
+                    dump_path=db_dump_path,
+                    db_url=settings.postgres_url,
+                )
+        except Exception as exc:
+            db_restore_meta = {"success": False, "error": str(exc)}
+
         restore_record = BackupRecord(
             id=restore_id,
             name=f"restore-{restore_id.hex[:8]}",
@@ -223,7 +262,7 @@ class BackupService:
             },
             artifact_path=record.artifact_path,
             artifact_hash=record.artifact_hash,
-            metadata_json={},
+            metadata_json={"db_restore": db_restore_meta},
             status="completed",
             restore_target_id=backup_id,
         )
