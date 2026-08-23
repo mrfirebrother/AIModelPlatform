@@ -12,3 +12,9 @@ test-results/
 *.log
 postgres/
 infra/redis/
+infra/datasets/
+infra/models/
+dataset/
+*.pt
+*.zip
+*.tar.gz
