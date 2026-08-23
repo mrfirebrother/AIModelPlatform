@@ -15,6 +15,12 @@ export default function DatasetsPage() {
   const loadDatasets = () => api.getDatasets().then(setDatasets);
   useEffect(() => { loadDatasets(); }, [api]);
 
+  const handleDelete = async (id: string) => {
+    if (!confirm("确定删除此数据集？")) return;
+    await api.deleteDataset(id);
+    loadDatasets();
+  };
+
   const handleFile = async (file: File) => {
     const lower = file.name.toLowerCase();
     if (!lower.endsWith(".zip") && !lower.endsWith(".tar.gz") && !lower.endsWith(".tgz")) {
@@ -117,6 +123,7 @@ export default function DatasetsPage() {
                 <th>来源</th>
                 <th>校验</th>
                 <th>快照</th>
+                <th>操作</th>
               </tr>
             </thead>
             <tbody>
@@ -134,6 +141,7 @@ export default function DatasetsPage() {
                   <td>{d.source ?? "-"}</td>
                   <td><span className={`badge ${(d.validationStatus ?? "") === "通过" ? "badge-green" : "badge-red"}`}>{d.validationStatus ?? "-"}</span></td>
                   <td style={{ fontFamily: "Courier New, monospace", fontSize: 10 }}>{d.latestSnapshotId ?? "-"}</td>
+                  <td><button className="btn small danger" onClick={() => handleDelete(d.id)}>删除</button></td>
                 </tr>
               ))}
             </tbody>

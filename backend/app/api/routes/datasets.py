@@ -114,6 +114,36 @@ def get_dataset(
     return dataset
 
 
+@router.delete("/{dataset_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_dataset(
+    dataset_id: UUID,
+    db: Session = Depends(get_db),
+    _key: str = Depends(verify_api_key),
+) -> None:
+    dataset = db.get(Dataset, dataset_id)
+    if dataset is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset not found")
+    try:
+        log_operation(
+            db,
+            operation_type="dataset.delete",
+            resource_type="dataset",
+            resource_id=dataset.id,
+            status="success",
+            summary_json={"dataset_id": str(dataset.id), "name": dataset.name},
+        )
+        db.delete(dataset)
+        db.flush()
+    except Exception as exc:
+        log_operation(
+            db,
+            operation_type="dataset.delete",
+            status="error",
+            error_summary=str(exc),
+        )
+        raise
+
+
 @router.post("/snapshots", response_model=SnapshotResponse, status_code=status.HTTP_201_CREATED)
 def create_snapshot(
     payload: SnapshotCreate,

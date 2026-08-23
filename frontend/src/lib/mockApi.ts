@@ -419,6 +419,12 @@ export const mockApi: ApiClient = {
     return ds;
   },
 
+  async deleteDataset(id: string) {
+    await delay(80);
+    const idx = datasets.findIndex((d) => d.id === id);
+    if (idx !== -1) datasets.splice(idx, 1);
+  },
+
   async getTrainingTasks(): Promise<TrainingTask[]> {
     await delay(60);
     return [...trainingTasks];

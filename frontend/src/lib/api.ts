@@ -248,6 +248,7 @@ export interface ApiClient {
   getReleases(bindingId?: string): Promise<ModelBindingRelease[]>;
   getDatasets(): Promise<Dataset[]>;
   createDataset(data: Partial<Dataset>): Promise<Dataset>;
+  deleteDataset(id: string): Promise<void>;
   getTrainingTasks(): Promise<TrainingTask[]>;
   createTrainingTask(data: Partial<TrainingTask>): Promise<TrainingTask>;
   getTrainingLogs(taskId: string): Promise<TrainingLogs>;
