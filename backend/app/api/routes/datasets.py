@@ -24,6 +24,10 @@ class DatasetCreate(BaseModel):
     name: str
     description: str | None = None
     source_path: str | None = None
+    sourcePath: str | None = None
+
+    def get_source_path(self) -> str | None:
+        return self.source_path or self.sourcePath
 
 
 class DatasetResponse(BaseModel):
@@ -70,13 +74,14 @@ def create_dataset(
         while db.query(Dataset).filter(Dataset.name == name).first():
             name = f"{payload.name}_{suffix}"
             suffix += 1
-        dataset = Dataset(name=name, description=payload.description, source_path=payload.source_path)
+        dataset = Dataset(name=name, description=payload.description, source_path=payload.get_source_path())
         db.add(dataset)
         db.flush()
 
         # If source_path is provided, validate and create snapshot
-        if payload.source_path:
-            source_path = Path(payload.source_path)
+        source_path_str = payload.get_source_path()
+        if source_path_str:
+            source_path = Path(source_path_str)
             # If it's a zip file, extract it first
             if source_path.exists() and source_path.is_file():
                 import zipfile
