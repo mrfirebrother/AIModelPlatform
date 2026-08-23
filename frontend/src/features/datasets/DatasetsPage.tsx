@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createApi } from "../../lib/createApi";
+import { useToast } from "../../lib/toast";
 import type { Dataset } from "../../lib/api";
 
 export default function DatasetsPage() {
   const api = useMemo(() => createApi(), []);
+  const toast = useToast();
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [showImport, setShowImport] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -16,9 +18,15 @@ export default function DatasetsPage() {
   useEffect(() => { loadDatasets(); }, [api]);
 
   const handleDelete = async (id: string) => {
-    if (!confirm("确定删除此数据集？")) return;
-    await api.deleteDataset(id);
-    loadDatasets();
+    const confirmed = await toast.confirm("\u786e\u5b9a\u5220\u9664\u6b64\u6570\u636e\u96c6\uff1f");
+    if (!confirmed) return;
+    try {
+      await api.deleteDataset(id);
+      toast.success("\u6570\u636e\u96c6\u5df2\u5220\u9664");
+      loadDatasets();
+    } catch (err) {
+      toast.error("\u5220\u9664\u5931\u8d25: " + (err as Error).message);
+    }
   };
 
   const handleFile = async (file: File) => {
@@ -40,10 +48,11 @@ export default function DatasetsPage() {
         name: file.name.replace(/\.(zip|tar\.gz|tgz)$/i, ""),
         sourcePath: res.file_path,
       });
+      toast.success("\u6570\u636e\u96c6\u5df2\u5bfc\u5165");
       setShowImport(false);
       loadDatasets();
     } catch (err) {
-      setUploadError("导入失败: " + (err as Error).message);
+      toast.error("\u5bfc\u5165\u5931\u8d25: " + (err as Error).message);
     }
     setUploading(false);
     setUploadPct(null);

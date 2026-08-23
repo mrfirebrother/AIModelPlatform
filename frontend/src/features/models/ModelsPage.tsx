@@ -6,6 +6,7 @@ import type { ModelNode } from "../../lib/api";
 
 export default function ModelsPage() {
   const api = useMemo(() => createApi(), []);
+  const toast = useToast();
   const navigate = useNavigate();
   const toast = useToast();
   const [nodes, setNodes] = useState<ModelNode[]>([]);
@@ -35,10 +36,11 @@ export default function ModelsPage() {
         taskType: "object_detection",
         modelFamily: "yolo",
       });
+      toast.success("\u6a21\u578b\u5df2\u5bfc\u5165");
       setShowImport(false);
       loadNodes();
     } catch (err) {
-      setUploadError("导入失败: " + (err as Error).message);
+      toast.error("\u5bfc\u5165\u5931\u8d25: " + (err as Error).message);
     }
     setUploading(false);
     setUploadPct(null);
