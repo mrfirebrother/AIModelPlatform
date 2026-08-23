@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { createApi } from "../../lib/createApi";
 import type { Dataset } from "../../lib/api";
 
@@ -9,9 +9,41 @@ export default function DatasetsPage() {
   const [importPath, setImportPath] = useState("");
   const [importName, setImportName] = useState("");
   const [importing, setImporting] = useState(false);
+  const [uploadPct, setUploadPct] = useState<number | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadDatasets = () => api.getDatasets().then(setDatasets);
   useEffect(() => { loadDatasets(); }, [api]);
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const lower = file.name.toLowerCase();
+    if (!lower.endsWith(".zip") && !lower.endsWith(".tar.gz") && !lower.endsWith(".tgz")) {
+      setUploadError("仅支持 .zip 或 .tar.gz 文件");
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024 * 1024) {
+      setUploadError("文件大小不能超过 2GB");
+      return;
+    }
+
+    setUploadError(null);
+    setUploadPct(0);
+    setImportName(file.name.replace(/\.(zip|tar\.gz|tgz)$/i, ""));
+
+    try {
+      const res = await api.uploadDataset(file, (pct) => setUploadPct(pct));
+      setImportPath(res.file_path);
+      setUploadPct(null);
+    } catch (err) {
+      setUploadError("上传失败: " + (err as Error).message);
+      setUploadPct(null);
+    }
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
 
   const handleImport = async () => {
     if (!importPath) return;
@@ -44,7 +76,42 @@ export default function DatasetsPage() {
           <div className="card-title" style={{ marginBottom: 12 }}>导入 YOLO 数据集</div>
           <div style={{ display: "grid", gap: 10, maxWidth: 500 }}>
             <div>
-              <label style={{ fontSize: 11, color: "#666" }}>数据集目录路径</label>
+              <label style={{ fontSize: 11, color: "#666" }}>选择压缩包文件</label>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 4 }}>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".zip,.tar.gz,.tgz"
+                  onChange={handleFileSelect}
+                  style={{ fontSize: 11, flex: 1 }}
+                />
+              </div>
+              {uploadPct !== null && (
+                <div style={{ marginTop: 6 }}>
+                  <div style={{ background: "#e0e8f0", borderRadius: 3, height: 6, overflow: "hidden" }}>
+                    <div
+                      style={{
+                        background: "#2563eb",
+                        height: "100%",
+                        width: `${uploadPct}%`,
+                        transition: "width 0.2s",
+                      }}
+                    />
+                  </div>
+                  <div style={{ fontSize: 10, color: "#666", marginTop: 2 }}>{uploadPct}%</div>
+                </div>
+              )}
+              {uploadError && (
+                <div style={{ fontSize: 11, color: "#dc2626", marginTop: 4 }}>{uploadError}</div>
+              )}
+            </div>
+            {importPath && (
+              <div style={{ fontSize: 11, color: "#16a34a", background: "#f0fdf4", padding: "6px 10px", borderRadius: 3 }}>
+                已上传: {importPath}
+              </div>
+            )}
+            <div>
+              <label style={{ fontSize: 11, color: "#666" }}>数据集目录路径（也可手动输入）</label>
               <input
                 value={importPath}
                 onChange={(e) => setImportPath(e.target.value)}
@@ -62,10 +129,10 @@ export default function DatasetsPage() {
               />
             </div>
             <div style={{ display: "flex", gap: 8 }}>
-              <button className="btn primary" onClick={handleImport} disabled={importing}>
+              <button className="btn primary" onClick={handleImport} disabled={importing || !importPath || uploadPct !== null}>
                 {importing ? "导入中..." : "确认导入"}
               </button>
-              <button className="btn" onClick={() => setShowImport(false)}>取消</button>
+              <button className="btn" onClick={() => { setShowImport(false); setImportPath(""); setImportName(""); setUploadPct(null); setUploadError(null); }}>取消</button>
             </div>
           </div>
         </div>

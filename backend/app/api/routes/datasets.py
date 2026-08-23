@@ -1,16 +1,21 @@
 ﻿from __future__ import annotations
 
+import hashlib
+import secrets
+from pathlib import Path
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from backend.app.api.dependencies import get_db, verify_api_key
+from backend.app.api.dependencies import get_effective_settings, get_db, verify_api_key
 from backend.app.models import Dataset, DatasetSnapshot, LabelSchema
 from backend.app.observability.operation_log import log_operation
+
+_MAX_DATASET_BYTES = 2 * 1024 * 1024 * 1024  # 2 GB
 
 router = APIRouter(prefix="/api/datasets", tags=["datasets"])
 
@@ -150,3 +155,63 @@ def create_snapshot(
             error_summary=str(exc),
         )
         raise
+
+
+@router.post("/upload")
+async def upload_dataset(
+    file: UploadFile,
+    _key: str = Depends(verify_api_key),
+) -> Any:
+    if not file.filename:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Filename is required",
+        )
+    lower = file.filename.lower()
+    if not (lower.endswith(".zip") or lower.endswith(".tar.gz") or lower.endswith(".tgz")):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only .zip or .tar.gz files are allowed",
+        )
+
+    settings = get_effective_settings()
+    dataset_dir = Path(settings.dataset_dir)
+    dataset_dir.mkdir(parents=True, exist_ok=True)
+
+    safe_name = f"{secrets.token_hex(8)}_{file.filename}"
+    dest = dataset_dir / safe_name
+
+    sha256 = hashlib.sha256()
+    total = 0
+    try:
+        with open(dest, "wb") as f:
+            while True:
+                chunk = await file.read(1024 * 1024)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > _MAX_DATASET_BYTES:
+                    break
+                f.write(chunk)
+                sha256.update(chunk)
+        if total > _MAX_DATASET_BYTES:
+            dest.unlink(missing_ok=True)
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=f"File size exceeds {_MAX_DATASET_BYTES // (1024 * 1024 * 1024)} GB limit",
+            )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        dest.unlink(missing_ok=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Upload failed: {exc}",
+        )
+
+    return {
+        "filename": file.filename,
+        "file_path": str(dest),
+        "size": total,
+        "sha256": f"sha256:{sha256.hexdigest()}",
+    }

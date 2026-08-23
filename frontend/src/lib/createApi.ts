@@ -24,6 +24,45 @@ async function postJson<T>(path: string, body?: unknown): Promise<T> {
   return res.json();
 }
 
+async function uploadFile<T>(
+  path: string,
+  file: File,
+  onProgress?: (pct: number) => void,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${API_BASE}${path}`);
+    xhr.setRequestHeader("X-API-Key", import.meta.env.VITE_API_KEY || "change-me");
+
+    xhr.upload.addEventListener("progress", (e) => {
+      if (e.lengthComputable && onProgress) {
+        onProgress(Math.round((e.loaded / e.total) * 100));
+      }
+    });
+
+    xhr.addEventListener("load", () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(JSON.parse(xhr.responseText));
+      } else {
+        let detail = xhr.statusText;
+        try {
+          const body = JSON.parse(xhr.responseText);
+          detail = body.detail || detail;
+        } catch {
+          /* ignore */
+        }
+        reject(new Error(`${xhr.status}: ${detail}`));
+      }
+    });
+
+    xhr.addEventListener("error", () => reject(new Error("Network error")));
+
+    const fd = new FormData();
+    fd.append("file", file);
+    xhr.send(fd);
+  });
+}
+
 const realApi: ApiClient = {
   async getKpis() {
     const [bindingsRes, tasksRes, evalsRes, gpuStatus, gpuModels] = await Promise.all([
@@ -118,6 +157,10 @@ const realApi: ApiClient = {
     fetchJson<any>(`/api/operations/errors?skip=${skip}&limit=${limit}`),
   getOperationStatus: () =>
     fetchJson<any>("/api/operations/status"),
+  uploadModel: (file, onProgress) =>
+    uploadFile<any>("/api/models/upload", file, onProgress),
+  uploadDataset: (file, onProgress) =>
+    uploadFile<any>("/api/datasets/upload", file, onProgress),
 };
 
 export function createApi(): ApiClient {

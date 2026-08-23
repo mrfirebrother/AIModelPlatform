@@ -1,12 +1,15 @@
 ﻿from __future__ import annotations
 
+import hashlib
+import secrets
+from pathlib import Path
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
-from backend.app.api.dependencies import get_db, verify_api_key
+from backend.app.api.dependencies import get_effective_settings, get_db, verify_api_key
 from backend.app.observability.operation_log import log_operation
 from backend.app.repositories.model_repository import (
     create_model_node,
@@ -19,6 +22,8 @@ from backend.app.schemas.model import (
     ModelNodeResponse,
     ModelNodeStatusUpdate,
 )
+
+_MAX_MODEL_BYTES = 500 * 1024 * 1024  # 500 MB
 
 router = APIRouter(prefix="/api/models", tags=["models"])
 
@@ -115,3 +120,57 @@ def update_model_status(
             error_summary=str(exc),
         )
         raise
+
+
+@router.post("/upload")
+async def upload_model(
+    file: UploadFile,
+    _key: str = Depends(verify_api_key),
+) -> Any:
+    if not file.filename or not file.filename.endswith(".pt"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only .pt files are allowed",
+        )
+
+    settings = get_effective_settings()
+    model_dir = Path(settings.model_dir)
+    model_dir.mkdir(parents=True, exist_ok=True)
+
+    safe_name = f"{secrets.token_hex(8)}_{file.filename}"
+    dest = model_dir / safe_name
+
+    sha256 = hashlib.sha256()
+    total = 0
+    try:
+        with open(dest, "wb") as f:
+            while True:
+                chunk = await file.read(1024 * 1024)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > _MAX_MODEL_BYTES:
+                    break
+                f.write(chunk)
+                sha256.update(chunk)
+        if total > _MAX_MODEL_BYTES:
+            dest.unlink(missing_ok=True)
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=f"File size exceeds {_MAX_MODEL_BYTES // (1024 * 1024)} MB limit",
+            )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        dest.unlink(missing_ok=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Upload failed: {exc}",
+        )
+
+    return {
+        "filename": file.filename,
+        "file_path": str(dest),
+        "size": total,
+        "sha256": f"sha256:{sha256.hexdigest()}",
+    }

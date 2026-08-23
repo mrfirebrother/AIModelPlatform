@@ -548,4 +548,32 @@ export const mockApi: ApiClient = {
     await delay(40);
     return { status: "ready", checks: { postgres: true, redis: true, gpu: true, worker: true } };
   },
+
+  async uploadModel(file: File, onProgress?: (pct: number) => void) {
+    const totalSteps = 10;
+    for (let i = 1; i <= totalSteps; i++) {
+      await delay(60);
+      if (onProgress) onProgress(Math.round((i / totalSteps) * 100));
+    }
+    return {
+      filename: file.name,
+      file_path: `/uploads/models/${file.name}`,
+      size: file.size,
+      sha256: "sha256:mock_hash",
+    };
+  },
+
+  async uploadDataset(file: File, onProgress?: (pct: number) => void) {
+    const totalSteps = 10;
+    for (let i = 1; i <= totalSteps; i++) {
+      await delay(80);
+      if (onProgress) onProgress(Math.round((i / totalSteps) * 100));
+    }
+    return {
+      filename: file.name,
+      file_path: `/uploads/datasets/${file.name}`,
+      size: file.size,
+      sha256: "sha256:mock_hash",
+    };
+  },
 };

@@ -229,6 +229,13 @@ export interface KpiData {
   pendingEval: number;
 }
 
+export interface UploadResponse {
+  filename: string;
+  file_path: string;
+  size: number;
+  sha256: string;
+}
+
 /* ===== API interface ===== */
 
 export interface ApiClient {
@@ -257,4 +264,6 @@ export interface ApiClient {
   getOperationLogs(skip?: number, limit?: number): Promise<OperationLogsResponse>;
   getOperationErrors(skip?: number, limit?: number): Promise<OperationLogsResponse>;
   getOperationStatus(): Promise<OperationStatusResponse>;
+  uploadModel(file: File, onProgress?: (pct: number) => void): Promise<UploadResponse>;
+  uploadDataset(file: File, onProgress?: (pct: number) => void): Promise<UploadResponse>;
 }
