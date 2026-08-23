@@ -42,8 +42,7 @@ function Sidebar() {
         <div className="brand-mark">
           <i /> AI Model Platform
         </div>
-        <h1>AI 模型<br />服务平台</h1>
-        <p>模型运维台</p>
+        <h1>AI 模型服务平台</h1>
       </div>
 
       <div className="nav-label">工作台</div>
