@@ -23,6 +23,7 @@ router = APIRouter(prefix="/api/datasets", tags=["datasets"])
 class DatasetCreate(BaseModel):
     name: str
     description: str | None = None
+    source_path: str | None = None
 
 
 class DatasetResponse(BaseModel):
