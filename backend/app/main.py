@@ -40,6 +40,7 @@ def create_app(
     app = FastAPI(title="AI Model Platform API", version="0.1.0")
 
     from .api.routes import (
+        alerts_router,
         backup_router,
         bindings_router,
         datasets_router,
@@ -56,6 +57,7 @@ def create_app(
         training_router,
     )
 
+    app.include_router(alerts_router)
     app.include_router(health_router)
     app.include_router(models_router)
     app.include_router(bindings_router)

@@ -1,4 +1,5 @@
-﻿from .base import Base
+﻿from .alert import Alert
+from .base import Base
 from .backup import BackupRecord
 from .binding import BindingRelease, ModelBinding
 from .dataset import Dataset, DatasetSnapshot
@@ -11,6 +12,7 @@ from .runtime import RuntimeInstance
 from .training import Checkpoint, TrainingAttempt, TrainingTask
 
 __all__ = [
+    "Alert",
     "BackupRecord",
     "Base",
     "BindingRelease",
