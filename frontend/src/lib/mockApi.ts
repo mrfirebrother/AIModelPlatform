@@ -522,4 +522,30 @@ export const mockApi: ApiClient = {
   async reviewEvaluation(_id: string, _status: string) {
     await delay(200);
   },
+
+  async getOperationLogs(skip = 0, limit = 20) {
+    await delay(60);
+    const items = [
+      { id: "op-001", operationType: "training.create", actor: "admin", requestId: "r-001", resourceType: "training_task", resourceId: "t-001", status: "success", summaryJson: { detail: "创建训练任务" }, errorSummary: null, createdAt: "2026-08-20T10:00:00Z" },
+      { id: "op-002", operationType: "binding.update", actor: "admin", requestId: "r-002", resourceType: "binding", resourceId: "b-001", status: "success", summaryJson: { detail: "更新模型关联" }, errorSummary: null, createdAt: "2026-08-20T11:00:00Z" },
+      { id: "op-003", operationType: "gpu.load", actor: "system", requestId: "r-003", resourceType: "gpu", resourceId: null, status: "error", summaryJson: { detail: "加载模型失败" }, errorSummary: "CUDA OOM", createdAt: "2026-08-20T12:00:00Z" },
+    ];
+    const filtered = items.slice(skip, skip + limit);
+    return { items: filtered, total: items.length };
+  },
+
+  async getOperationErrors(_skip = 0, _limit = 50) {
+    await delay(60);
+    return {
+      items: [
+        { id: "op-003", operationType: "gpu.load", actor: "system", requestId: "r-003", resourceType: "gpu", resourceId: null, status: "error", summaryJson: { detail: "加载模型失败" }, errorSummary: "CUDA OOM", createdAt: "2026-08-20T12:00:00Z" },
+      ],
+      total: 1,
+    };
+  },
+
+  async getOperationStatus() {
+    await delay(40);
+    return { status: "ready", checks: { postgres: true, redis: true, gpu: true, worker: true } };
+  },
 };

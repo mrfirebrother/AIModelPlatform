@@ -112,6 +112,12 @@ const realApi: ApiClient = {
     })),
   reviewEvaluation: (id, status) =>
     postJson(`/api/evaluations/${id}/review`, { human_status: status }),
+  getOperationLogs: (skip = 0, limit = 20) =>
+    fetchJson<any>(`/api/operations/logs?skip=${skip}&limit=${limit}`),
+  getOperationErrors: (skip = 0, limit = 50) =>
+    fetchJson<any>(`/api/operations/errors?skip=${skip}&limit=${limit}`),
+  getOperationStatus: () =>
+    fetchJson<any>("/api/operations/status"),
 };
 
 export function createApi(): ApiClient {

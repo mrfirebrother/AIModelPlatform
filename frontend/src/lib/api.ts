@@ -187,6 +187,36 @@ export interface GpuUnloadResponse {
   success: boolean;
 }
 
+export interface OperationLogEntry {
+  id: string;
+  operationType: string;
+  actor: string | null;
+  requestId: string | null;
+  resourceType: string | null;
+  resourceId: string | null;
+  status: string;
+  summaryJson: Record<string, unknown>;
+  errorSummary: string | null;
+  createdAt: string;
+}
+
+export interface OperationLogsResponse {
+  items: OperationLogEntry[];
+  total: number;
+}
+
+export interface SystemChecks {
+  postgres: boolean;
+  redis: boolean;
+  gpu: boolean;
+  worker: boolean;
+}
+
+export interface OperationStatusResponse {
+  status: string;
+  checks: SystemChecks;
+}
+
 export interface KpiData {
   bindingCount: number;
   bindingDelta: number;
@@ -224,4 +254,7 @@ export interface ApiClient {
   gpuLoadModel(modelName: string, memoryMb: number): Promise<GpuLoadResponse>;
   gpuUnloadModel(modelName: string): Promise<GpuUnloadResponse>;
   reviewEvaluation(id: string, status: string): Promise<void>;
+  getOperationLogs(skip?: number, limit?: number): Promise<OperationLogsResponse>;
+  getOperationErrors(skip?: number, limit?: number): Promise<OperationLogsResponse>;
+  getOperationStatus(): Promise<OperationStatusResponse>;
 }

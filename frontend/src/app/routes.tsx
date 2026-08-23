@@ -9,6 +9,7 @@ import TrainingCreatePage from "../features/training/TrainingCreatePage";
 import EvaluationsPage from "../features/evaluations/EvaluationsPage";
 import ReleasesPage from "../features/releases/ReleasesPage";
 import ResourcesPage from "../features/resources/ResourcesPage";
+import OperationsPage from "../features/operations/OperationsPage";
 
 const navItems = [
   { to: "/dashboard", label: "总览", icon: "▦" },
@@ -22,6 +23,7 @@ const navItems = [
 const navItems2 = [
   { to: "/releases", label: "发布管理", icon: "↗" },
   { to: "/resources", label: "资源控制", icon: "≡" },
+  { to: "/operations", label: "运维管理", icon: "⛭" },
 ];
 
 const pageTitles: Record<string, string> = {
@@ -33,6 +35,7 @@ const pageTitles: Record<string, string> = {
   "/evaluations": "模型评估",
   "/releases": "发布管理",
   "/resources": "资源控制",
+  "/operations": "运维管理",
 };
 
 function Sidebar() {
@@ -111,6 +114,7 @@ export function AppRoutes() {
           <Route path="/evaluations" element={<EvaluationsPage />} />
           <Route path="/releases" element={<ReleasesPage />} />
           <Route path="/resources" element={<ResourcesPage />} />
+          <Route path="/operations" element={<OperationsPage />} />
         </Routes>
       </main>
     </>

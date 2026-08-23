@@ -12,6 +12,7 @@ from .resources import router as resources_router
 from .infer import router as infer_router
 from .inference import router as inference_router
 from .gpu import router as gpu_router
+from .operations import router as operations_router
 
 __all__ = [
     "health_router",
@@ -26,4 +27,5 @@ __all__ = [
     "infer_router",
     "inference_router",
     "gpu_router",
+    "operations_router",
 ]
