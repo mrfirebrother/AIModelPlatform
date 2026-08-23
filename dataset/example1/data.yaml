@@ -1,0 +1,11 @@
+﻿path: F:/Opp/RustDetect/dataset
+train: train/images
+val: valid/images
+test: test/images
+
+nc: 4
+names:
+  0: Crevice Corrosion
+  1: Pitting Corrosion
+  2: Uniform Corrosion
+  3: Corrosion

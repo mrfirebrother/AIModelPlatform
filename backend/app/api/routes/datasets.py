@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.app.api.dependencies import get_effective_settings, get_db, verify_api_key
-from backend.app.models import Dataset, DatasetSnapshot, LabelSchema
+from backend.app.models import Dataset, DatasetSnapshot, LabelSchema, LabelSchemaClass
 from backend.app.observability.operation_log import log_operation
 
 _MAX_DATASET_BYTES = 2 * 1024 * 1024 * 1024  # 2 GB
@@ -68,9 +68,52 @@ def create_dataset(
         while db.query(Dataset).filter(Dataset.name == name).first():
             name = f"{payload.name}_{suffix}"
             suffix += 1
-        dataset = Dataset(name=name, description=payload.description)
+        dataset = Dataset(name=name, description=payload.description, source_path=payload.source_path)
         db.add(dataset)
         db.flush()
+
+        # If source_path is provided, validate and create snapshot
+        if payload.source_path:
+            source_dir = Path(payload.source_path)
+            if source_dir.exists() and source_dir.is_dir():
+                from backend.app.services.dataset_validation import validate_yolo_dataset
+                validation = validate_yolo_dataset(source_dir)
+                if validation.is_valid:
+                    # Create a default label schema from data.yaml
+                    data_yaml = {}
+                    data_yaml_path = source_dir / "data.yaml"
+                    if data_yaml_path.exists():
+                        import yaml
+                        with open(data_yaml_path) as f:
+                            data_yaml = yaml.safe_load(f) or {}
+                    names = data_yaml.get("names", {})
+                    schema = LabelSchema(name=f"{name}_schema")
+                    db.add(schema)
+                    db.flush()
+                    for cid, cname in names.items():
+                        db.add(LabelSchemaClass(schema_id=schema.id, class_id=int(cid), semantic_key=cname, display_name=cname))
+                    db.flush()
+
+                    # Create snapshot
+                    snapshot = DatasetSnapshot(
+                        dataset_id=dataset.id,
+                        label_schema_id=schema.id,
+                        manifest_path=str(source_dir / "data.yaml"),
+                        manifest_hash="sha256:imported",
+                        train_manifest_json=[],
+                        val_manifest_json=[],
+                        test_manifest_json=[],
+                        source_path=str(source_dir),
+                        train_positive_count=validation.train_count,
+                        val_positive_count=validation.val_count,
+                        test_positive_count=validation.test_count,
+                        train_negative_count=validation.negative_count,
+                        val_negative_count=0,
+                        test_negative_count=0,
+                    )
+                    db.add(snapshot)
+                    db.flush()
+
         log_operation(
             db,
             operation_type="dataset.create",
