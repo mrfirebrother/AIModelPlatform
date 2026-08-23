@@ -57,9 +57,11 @@ def create_app(
         training_logs_router,
         training_router,
     )
+    from .observability.health_probes import router as probes_router
 
     app.include_router(alerts_router)
     app.include_router(health_router)
+    app.include_router(probes_router)
     app.include_router(models_router)
     app.include_router(model_diff_router)
     app.include_router(bindings_router)
