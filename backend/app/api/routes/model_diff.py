@@ -14,7 +14,7 @@ from backend.app.services.model_diff import (
     get_model_history,
 )
 
-router = APIRouter(prefix="/api/models", tags=["model-diff"])
+router = APIRouter(prefix="/api/model-diff", tags=["model-diff"])
 
 
 @router.get("/{model_id}/diff")
