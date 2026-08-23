@@ -4,14 +4,22 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+
+
+def _to_camel(name: str) -> str:
+    parts = name.split("_")
+    return parts[0] + "".join(p.capitalize() for p in parts[1:])
 
 
 class ModelNodeCreate(BaseModel):
+    model_config = ConfigDict(alias_generator=_to_camel, populate_by_name=True)
+
     task_type: str = Field(..., max_length=64)
     model_family: str = Field(..., max_length=128)
     artifact_path: str = Field(..., max_length=1024)
-    artifact_hash: str = Field(..., max_length=255)
+    artifact_hash: str = Field(default="", max_length=255)
+    name: str = Field(default="", max_length=255)
     parent_id: UUID | None = None
     label_schema_id: UUID | None = None
     dataset_snapshot_id: UUID | None = None
@@ -24,6 +32,7 @@ class ModelNodeCreate(BaseModel):
 
 class ModelNodeResponse(BaseModel):
     id: UUID
+    name: str = ""
     parent_id: UUID | None
     label_schema_id: UUID | None
     dataset_snapshot_id: UUID | None

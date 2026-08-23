@@ -28,6 +28,7 @@ class ModelNode(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     parent_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("model_nodes.id", ondelete="RESTRICT")
     )
+    name: Mapped[str] = mapped_column(String(255), nullable=False, default="")
     label_schema_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("label_schemas.id", ondelete="RESTRICT")
     )

@@ -41,6 +41,7 @@ def create_model(
             model_family=payload.model_family,
             artifact_path=payload.artifact_path,
             artifact_hash=payload.artifact_hash,
+            name=payload.name,
             parent_id=payload.parent_id,
             label_schema_id=payload.label_schema_id,
             dataset_snapshot_id=payload.dataset_snapshot_id,

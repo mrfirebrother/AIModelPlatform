@@ -16,6 +16,7 @@ def create_model_node(
     model_family: str,
     artifact_path: str,
     artifact_hash: str,
+    name: str = "",
     parent_id: UUID | None = None,
     label_schema_id: UUID | None = None,
     dataset_snapshot_id: UUID | None = None,
@@ -34,6 +35,7 @@ def create_model_node(
         if schema is None:
             raise ValueError(f"Label schema {label_schema_id} not found")
     model = ModelNode(
+        name=name,
         task_type=task_type,
         model_family=model_family,
         artifact_path=artifact_path,

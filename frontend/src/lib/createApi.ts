@@ -63,6 +63,20 @@ async function uploadFile<T>(
   });
 }
 
+function toCamel(s: string): string {
+  return s.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+}
+
+function camelizeKeys(obj: any): any {
+  if (Array.isArray(obj)) return obj.map(camelizeKeys);
+  if (obj !== null && typeof obj === "object" && !(obj instanceof Date)) {
+    return Object.fromEntries(
+      Object.entries(obj).map(([k, v]) => [toCamel(k), camelizeKeys(v)])
+    );
+  }
+  return obj;
+}
+
 const realApi: ApiClient = {
   async getKpis() {
     const [bindingsRes, tasksRes, evalsRes, gpuStatus, gpuModels] = await Promise.all([
@@ -89,20 +103,20 @@ const realApi: ApiClient = {
       pendingEval: Array.isArray(evals) ? evals.filter((e: any) => e.auto_status === "pending").length : 0,
     };
   },
-  getModelNodes: () => fetchJson<any>("/api/models").then((r) => r.models ?? r),
-  getModelNode: (id) => fetchJson<any>(`/api/models/${id}`).catch(() => null),
+  getModelNodes: () => fetchJson<any>("/api/models").then((r) => camelizeKeys(r.models ?? r)),
+  getModelNode: (id) => fetchJson<any>(`/api/models/${id}`).then(camelizeKeys).catch(() => null),
   createModelNode: (data) => postJson<any>("/api/models", data),
-  getBindings: () => fetchJson<any>("/api/bindings").then((r) => r.bindings ?? r),
+  getBindings: () => fetchJson<any>("/api/bindings").then((r) => camelizeKeys(r.bindings ?? r)),
   getReleases: (bindingId) =>
-    fetchJson<any>(bindingId ? `/api/bindings/${bindingId}/releases` : "/api/releases").then((r) => r.releases ?? r),
-  getDatasets: () => fetchJson<any>("/api/datasets").then((r) => r.datasets ?? r),
+    fetchJson<any>(bindingId ? `/api/bindings/${bindingId}/releases` : "/api/releases").then((r) => camelizeKeys(r.releases ?? r)),
+  getDatasets: () => fetchJson<any>("/api/datasets").then((r) => camelizeKeys(r.datasets ?? r)),
   createDataset: (data) => postJson<any>("/api/datasets", data),
-  getTrainingTasks: () => fetchJson<any>("/api/training/tasks").then((r) => r.tasks ?? r),
+  getTrainingTasks: () => fetchJson<any>("/api/training/tasks").then((r) => camelizeKeys(r.tasks ?? r)),
   createTrainingTask: (data) => postJson("/api/training/tasks", data),
   getTrainingLogs: (taskId: string) => fetchJson<any>(`/api/training/${taskId}/logs`),
   getTrainingMetrics: (taskId: string) => fetchJson<any>(`/api/training/${taskId}/metrics`),
   getTrainingCheckpoint: (taskId: string) => fetchJson<any>(`/api/training/${taskId}/checkpoint`),
-  getEvaluations: () => fetchJson<any>("/api/evaluations").then((r) => r.evaluations ?? r),
+  getEvaluations: () => fetchJson<any>("/api/evaluations").then((r) => camelizeKeys(r.evaluations ?? r)),
   getResourceStatus: async () => {
     const gpuStatus = await fetchJson<any>("/api/gpu/status").catch(() => null);
     const gpuModels = await fetchJson<any>("/api/gpu/models").catch(() => ({ models: [] }));
@@ -134,11 +148,11 @@ const realApi: ApiClient = {
     freeMemoryMb: r.free_memory_mb,
   })),
   getGpuModels: () => fetchJson<any>("/api/gpu/models").then((r) =>
-    (r.models ?? []).map((m: any) => ({
+    camelizeKeys((r.models ?? []).map((m: any) => ({
       modelName: m.model_name,
       gpuDevice: m.gpu_device,
       memoryMb: m.memory_mb,
-    }))
+    })))
   ),
   gpuLoadModel: (modelName, memoryMb) =>
     postJson<any>("/api/gpu/load", { model_name: modelName, memory_mb: memoryMb }).then((r) => ({
@@ -165,6 +179,7 @@ const realApi: ApiClient = {
 
 export function createApi(): ApiClient {
   const useMocks = import.meta.env.VITE_USE_MOCKS === "true";
+  console.log("[createApi] VITE_USE_MOCKS =", import.meta.env.VITE_USE_MOCKS, "useMocks =", useMocks);
   if (useMocks) {
     return mockApi;
   }
