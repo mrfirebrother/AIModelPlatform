@@ -49,6 +49,7 @@ def create_app(
         health_router,
         infer_router,
         inference_router,
+        model_diff_router,
         models_router,
         operations_router,
         releases_router,
@@ -60,6 +61,7 @@ def create_app(
     app.include_router(alerts_router)
     app.include_router(health_router)
     app.include_router(models_router)
+    app.include_router(model_diff_router)
     app.include_router(bindings_router)
     app.include_router(datasets_router)
     app.include_router(training_router)

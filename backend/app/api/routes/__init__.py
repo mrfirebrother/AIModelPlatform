@@ -14,6 +14,7 @@ from .resources import router as resources_router
 from .infer import router as infer_router
 from .inference import router as inference_router
 from .gpu import router as gpu_router
+from .model_diff import router as model_diff_router
 from .operations import router as operations_router
 
 __all__ = [
@@ -31,5 +32,6 @@ __all__ = [
     "infer_router",
     "inference_router",
     "gpu_router",
+    "model_diff_router",
     "operations_router",
 ]
