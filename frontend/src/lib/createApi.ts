@@ -1,4 +1,4 @@
-﻿import type { ApiClient } from "./api";
+import type { ApiClient } from "./api";
 import { mockApi } from "./mockApi";
 
 const API_BASE = import.meta.env.VITE_API_URL || "";
@@ -27,11 +27,11 @@ async function postJson<T>(path: string, body?: unknown): Promise<T> {
 const realApi: ApiClient = {
   async getKpis() {
     const [bindingsRes, tasksRes, evalsRes, gpuStatus, gpuModels] = await Promise.all([
-      fetchJson<any>("/api/bindings"),
-      fetchJson<any>("/api/training/tasks"),
-      fetchJson<any>("/api/evaluations"),
-      fetchJson<any>("/api/gpu/status"),
-      fetchJson<any>("/api/gpu/models"),
+      fetchJson<any>("/api/bindings").catch(() => ({ bindings: [] })),
+      fetchJson<any>("/api/training/tasks").catch(() => ({ tasks: [] })),
+      fetchJson<any>("/api/evaluations").catch(() => ({ evaluations: [] })),
+      fetchJson<any>("/api/gpu/status").catch(() => ({ used_memory_mb: 0, total_memory_mb: 1 })),
+      fetchJson<any>("/api/gpu/models").catch(() => ({ models: [] })),
     ]);
     const bindings = bindingsRes.bindings ?? bindingsRes;
     const tasks = tasksRes.tasks ?? tasksRes;
@@ -51,18 +51,37 @@ const realApi: ApiClient = {
     };
   },
   getModelNodes: () => fetchJson<any>("/api/models").then((r) => r.models ?? r),
-  getModelNode: (id) => fetchJson(`/api/models/${id}`).catch(() => null),
+  getModelNode: (id) => fetchJson<any>(`/api/models/${id}`).catch(() => null),
+  createModelNode: (data) => postJson<any>("/api/models", data),
   getBindings: () => fetchJson<any>("/api/bindings").then((r) => r.bindings ?? r),
   getReleases: (bindingId) =>
     fetchJson<any>(bindingId ? `/api/bindings/${bindingId}/releases` : "/api/releases").then((r) => r.releases ?? r),
   getDatasets: () => fetchJson<any>("/api/datasets").then((r) => r.datasets ?? r),
+  createDataset: (data) => postJson<any>("/api/datasets", data),
   getTrainingTasks: () => fetchJson<any>("/api/training/tasks").then((r) => r.tasks ?? r),
   createTrainingTask: (data) => postJson("/api/training/tasks", data),
   getTrainingLogs: (taskId: string) => fetchJson<any>(`/api/training/${taskId}/logs`),
   getTrainingMetrics: (taskId: string) => fetchJson<any>(`/api/training/${taskId}/metrics`),
   getTrainingCheckpoint: (taskId: string) => fetchJson<any>(`/api/training/${taskId}/checkpoint`),
   getEvaluations: () => fetchJson<any>("/api/evaluations").then((r) => r.evaluations ?? r),
-  getResourceStatus: () => fetchJson("/api/resources/gpu").then((r) => r.resources?.[0] ?? r),
+  getResourceStatus: async () => {
+    const gpuStatus = await fetchJson<any>("/api/gpu/status").catch(() => null);
+    const gpuModels = await fetchJson<any>("/api/gpu/models").catch(() => ({ models: [] }));
+    
+    const totalMemoryMb = gpuStatus?.total_memory_mb ?? 8192;
+    const usedMemoryMb = gpuStatus?.used_memory_mb ?? 0;
+    const models = gpuModels?.models ?? [];
+    
+    return {
+      gpuDevice: `GPU ${gpuStatus?.device_count ?? 0}`,
+      totalMemory: Math.round(totalMemoryMb / 1024 * 10) / 10,
+      usedMemory: Math.round(usedMemoryMb / 1024 * 10) / 10,
+      residentModels: models.length,
+      inferenceReserved: 0,
+      trainingReserved: 0,
+      healthy: (gpuStatus?.device_count ?? 0) > 0,
+    };
+  },
   loadModel: (modelNodeId) =>
     postJson(`/api/resources/load`, { modelNodeId }).then(() => true),
   rollbackBinding: (bindingId, targetReleaseId) =>

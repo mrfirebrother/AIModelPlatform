@@ -1,17 +1,40 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { createApi } from "../../lib/createApi";
 import type { ModelNode } from "../../lib/api";
 
 export default function ModelsPage() {
-  const api = createApi();
+  const api = useMemo(() => createApi(), []);
   const navigate = useNavigate();
   const [nodes, setNodes] = useState<ModelNode[]>([]);
   const [filter, setFilter] = useState<string>("all");
+  const [showImport, setShowImport] = useState(false);
+  const [importPath, setImportPath] = useState("");
+  const [importName, setImportName] = useState("");
+  const [importing, setImporting] = useState(false);
 
-  useEffect(() => {
-    api.getModelNodes().then(setNodes);
-  }, []);
+  const loadNodes = () => api.getModelNodes().then(setNodes);
+  useEffect(() => { loadNodes(); }, [api]);
+
+  const handleImport = async () => {
+    if (!importPath) return;
+    setImporting(true);
+    try {
+      await api.createModelNode({
+        artifactPath: importPath,
+        name: importName || importPath.split("/").pop(),
+        taskType: "object_detection",
+        modelFamily: "yolo",
+      });
+      setShowImport(false);
+      setImportPath("");
+      setImportName("");
+      loadNodes();
+    } catch (e) {
+      alert("导入失败: " + (e as Error).message);
+    }
+    setImporting(false);
+  };
 
   const roots = nodes.filter((n) => n.parentId === null);
   const byParent = (pid: string) => nodes.filter((n) => n.parentId === pid);
@@ -23,7 +46,7 @@ export default function ModelsPage() {
 
   return (
     <>
-      <div className="top-actions" style={{ marginBottom: 16 }}>
+      <div className="top-actions" style={{ marginBottom: 16, display: "flex", gap: 10, alignItems: "center" }}>
         <select
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
@@ -34,7 +57,46 @@ export default function ModelsPage() {
           <option value="candidate">候选</option>
           <option value="archived">已归档</option>
         </select>
+        <button
+          className="btn primary"
+          onClick={() => setShowImport(true)}
+          style={{ marginLeft: "auto" }}
+        >
+          + 导入根模型
+        </button>
       </div>
+
+      {showImport && (
+        <div className="card" style={{ marginBottom: 14, padding: 20 }}>
+          <div className="card-title" style={{ marginBottom: 12 }}>导入根模型</div>
+          <div style={{ display: "grid", gap: 10, maxWidth: 500 }}>
+            <div>
+              <label style={{ fontSize: 11, color: "#666" }}>模型文件路径</label>
+              <input
+                value={importPath}
+                onChange={(e) => setImportPath(e.target.value)}
+                placeholder="/path/to/yolov8n.pt"
+                style={{ width: "100%", padding: "8px 10px", border: "1px solid #bed2df", borderRadius: 3, fontSize: 12, marginTop: 4 }}
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: 11, color: "#666" }}>模型名称（可选）</label>
+              <input
+                value={importName}
+                onChange={(e) => setImportName(e.target.value)}
+                placeholder="yolov8n"
+                style={{ width: "100%", padding: "8px 10px", border: "1px solid #bed2df", borderRadius: 3, fontSize: 12, marginTop: 4 }}
+              />
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button className="btn primary" onClick={handleImport} disabled={importing}>
+                {importing ? "导入中..." : "确认导入"}
+              </button>
+              <button className="btn" onClick={() => setShowImport(false)}>取消</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {filteredRoots.map((root) => (
         <div key={root.id} className="card" style={{ marginBottom: 14 }}>

@@ -1,4 +1,4 @@
-﻿/* ===== Type definitions ===== */
+/* ===== Type definitions ===== */
 
 export type ModelNodeStatus = "candidate" | "approved" | "rejected" | "archived";
 export type BindingStatus = "active" | "inactive" | "unbound";
@@ -15,6 +15,7 @@ export interface ModelNode {
   labelSchemaId: string;
   labelSchemaName: string;
   status: ModelNodeStatus;
+  artifactPath?: string;
   metrics?: {
     precision: number;
     recall: number;
@@ -55,6 +56,7 @@ export interface Dataset {
   testCount: number;
   latestSnapshotId: string;
   source: string;
+  sourcePath?: string;
   validationStatus: string;
   warnings: string[];
   createdAt: string;
@@ -203,9 +205,11 @@ export interface ApiClient {
   getKpis(): Promise<KpiData>;
   getModelNodes(): Promise<ModelNode[]>;
   getModelNode(id: string): Promise<ModelNode | null>;
+  createModelNode(data: Partial<ModelNode>): Promise<ModelNode>;
   getBindings(): Promise<ModelBinding[]>;
   getReleases(bindingId?: string): Promise<ModelBindingRelease[]>;
   getDatasets(): Promise<Dataset[]>;
+  createDataset(data: Partial<Dataset>): Promise<Dataset>;
   getTrainingTasks(): Promise<TrainingTask[]>;
   createTrainingTask(data: Partial<TrainingTask>): Promise<TrainingTask>;
   getTrainingLogs(taskId: string): Promise<TrainingLogs>;

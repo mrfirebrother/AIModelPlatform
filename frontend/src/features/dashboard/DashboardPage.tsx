@@ -1,10 +1,10 @@
-﻿import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { createApi } from "../../lib/createApi";
 import type { KpiData, TrainingTask, ResourceStatus, GpuModelEntry } from "../../lib/api";
 
 export default function DashboardPage() {
-  const api = createApi();
+  const api = useMemo(() => createApi(), []);
   const navigate = useNavigate();
   const [kpis, setKpis] = useState<KpiData | null>(null);
   const [tasks, setTasks] = useState<TrainingTask[]>([]);
@@ -12,15 +12,10 @@ export default function DashboardPage() {
   const [gpuModels, setGpuModels] = useState<GpuModelEntry[]>([]);
 
   useEffect(() => {
-    Promise.all([api.getKpis(), api.getTrainingTasks(), api.getResourceStatus(), api.getGpuModels()]).then(
-      ([k, t, r, m]) => {
-        setKpis(k);
-        setTasks(t);
-        setResources(r);
-        setGpuModels(m);
-      },
-    );
-  }, []);
+    Promise.all([api.getKpis(), api.getTrainingTasks(), api.getResourceStatus(), api.getGpuModels()])
+      .then(([k, t, r, m]) => { setKpis(k); setTasks(t); setResources(r); setGpuModels(m); })
+      .catch(() => {});
+  }, [api]);
 
   if (!kpis || !resources) return <div className="empty-state">加载中...</div>;
 

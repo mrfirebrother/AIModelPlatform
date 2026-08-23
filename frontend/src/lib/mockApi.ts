@@ -338,6 +338,8 @@ export const mockApi: ApiClient = {
       bindingDelta: 2,
       residentModels: resourceStatus.residentModels,
       gpuUsage: Math.round((resourceStatus.usedMemory / resourceStatus.totalMemory) * 100),
+      gpuUsedMb: resourceStatus.usedMemory * 1024,
+      gpuTotalMb: resourceStatus.totalMemory * 1024,
       trainingQueue: trainingTasks.filter((t) => t.status === "queued").length,
       trainingRunning: trainingTasks.filter((t) => t.status === "running").length,
       pendingEval: evaluations.filter((e) => e.humanStatus === "pending").length,
@@ -354,6 +356,23 @@ export const mockApi: ApiClient = {
     return modelNodes.find((n) => n.id === id) || null;
   },
 
+  async createModelNode(data: Partial<ModelNode>): Promise<ModelNode> {
+    await delay(100);
+    const node: ModelNode = {
+      id: `model-${Date.now()}`,
+      name: data.name || "New Model",
+      parentId: data.parentId || null,
+      taskType: data.taskType || "object_detection",
+      modelFamily: data.modelFamily || "yolo",
+      labelSchemaId: data.labelSchemaId || "",
+      labelSchemaName: data.labelSchemaName || "",
+      status: "candidate",
+      createdAt: new Date().toISOString(),
+    };
+    modelNodes.push(node);
+    return node;
+  },
+
   async getBindings(): Promise<ModelBinding[]> {
     await delay(60);
     return [...bindings];
@@ -368,6 +387,26 @@ export const mockApi: ApiClient = {
   async getDatasets(): Promise<Dataset[]> {
     await delay(60);
     return [...datasets];
+  },
+
+  async createDataset(data: Partial<Dataset>): Promise<Dataset> {
+    await delay(100);
+    const ds: Dataset = {
+      id: `ds-${Date.now()}`,
+      name: data.name || "New Dataset",
+      labelSchemaName: data.labelSchemaName || "",
+      imageCount: 0,
+      trainCount: 0,
+      valCount: 0,
+      testCount: 0,
+      latestSnapshotId: "",
+      source: data.source || "upload",
+      validationStatus: "pending",
+      warnings: [],
+      createdAt: new Date().toISOString(),
+    };
+    datasets.push(ds);
+    return ds;
   },
 
   async getTrainingTasks(): Promise<TrainingTask[]> {
@@ -458,5 +497,25 @@ export const mockApi: ApiClient = {
   async rollbackBinding(_bindingId: string, _targetReleaseId: string): Promise<boolean> {
     await delay(300);
     return true;
+  },
+
+  async getGpuStatus() {
+    await delay(40);
+    return { deviceCount: 1, totalMemoryMb: 8192, usedMemoryMb: 0, freeMemoryMb: 8192 };
+  },
+
+  async getGpuModels() {
+    await delay(40);
+    return [];
+  },
+
+  async gpuLoadModel(_modelName: string, _memoryMb: number) {
+    await delay(500);
+    return { success: true, gpuDevice: "0" };
+  },
+
+  async gpuUnloadModel(_modelName: string) {
+    await delay(300);
+    return { success: true };
   },
 };

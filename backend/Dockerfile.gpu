@@ -1,4 +1,4 @@
-﻿FROM nvidia/cuda:12.2.0-runtime-ubuntu22.04
+FROM nvidia/cuda:12.2.0-runtime-ubuntu22.04
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -18,10 +18,6 @@ WORKDIR /app
 
 COPY pyproject.toml alembic.ini ./
 RUN pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/ \
-    && tail -c +4 pyproject.toml > /tmp/pyproject.toml \
-    && mv /tmp/pyproject.toml pyproject.toml \
-    && tail -c +4 alembic.ini > /tmp/alembic.ini \
-    && mv /tmp/alembic.ini alembic.ini \
     && pip install --no-cache-dir .
 
 COPY app ./app

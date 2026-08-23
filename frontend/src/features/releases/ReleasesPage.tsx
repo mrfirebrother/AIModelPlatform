@@ -1,20 +1,20 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createApi } from "../../lib/createApi";
 import type { ModelBindingRelease } from "../../lib/api";
 
 export default function ReleasesPage() {
-  const api = createApi();
+  const api = useMemo(() => createApi(), []);
   const [releases, setReleases] = useState<ModelBindingRelease[]>([]);
 
   useEffect(() => {
     api.getReleases().then(setReleases);
-  }, []);
+  }, [api]);
 
   return (
     <div className="card">
       <div className="card-head">
         <div>
-          <div className="card-title">发布与回滚记录</div>
+          <div className="card-title">发布与回滚</div>
           <div className="card-kicker">{releases.length} 条发布记录</div>
         </div>
       </div>
@@ -35,28 +35,12 @@ export default function ReleasesPage() {
           <tbody>
             {releases.map((r) => (
               <tr key={r.id}>
-                <td
-                  style={{
-                    fontFamily: "Courier New, monospace",
-                    fontSize: 10,
-                  }}
-                >
-                  {r.id}
-                </td>
-                <td
-                  style={{
-                    fontFamily: "Courier New, monospace",
-                    fontSize: 10,
-                  }}
-                >
-                  {r.bindingId}
-                </td>
+                <td style={{ fontFamily: "Courier New, monospace", fontSize: 10 }}>{r.id}</td>
+                <td style={{ fontFamily: "Courier New, monospace", fontSize: 10 }}>{r.bindingId}</td>
                 <td>第 {r.revisionNo} 次</td>
                 <td>{r.modelNodeId}</td>
                 <td>
-                  <span
-                    className={`badge ${r.releaseType === "rollback" ? "badge-red" : "badge-blue"}`}
-                  >
+                  <span className={`badge ${r.releaseType === "rollback" ? "badge-red" : "badge-blue"}`}>
                     {r.releaseType === "rollback" ? "回滚" : "正常"}
                   </span>
                 </td>
@@ -70,17 +54,11 @@ export default function ReleasesPage() {
                           : "badge-orange"
                     }`}
                   >
-                    {r.status === "active"
-                      ? "活跃"
-                      : r.status === "superseded"
-                        ? "已替换"
-                        : r.status}
+                    {r.status === "active" ? "活跃" : r.status === "superseded" ? "已替换" : r.status}
                   </span>
                 </td>
                 <td>{r.reason}</td>
-                <td style={{ fontSize: 11 }}>
-                  {new Date(r.createdAt).toLocaleString("zh-CN")}
-                </td>
+                <td style={{ fontSize: 11 }}>{new Date(r.createdAt).toLocaleString("zh-CN")}</td>
               </tr>
             ))}
           </tbody>

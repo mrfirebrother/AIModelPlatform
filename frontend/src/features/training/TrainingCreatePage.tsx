@@ -1,10 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { createApi } from "../../lib/createApi";
 import type { ModelNode, Dataset } from "../../lib/api";
 
 export default function TrainingCreatePage() {
-  const api = createApi();
+  const api = useMemo(() => createApi(), []);
   const navigate = useNavigate();
   const [models, setModels] = useState<ModelNode[]>([]);
   const [datasets, setDatasets] = useState<Dataset[]>([]);
@@ -19,8 +19,8 @@ export default function TrainingCreatePage() {
       setDatasets(d);
       if (m.length > 0) setParentId(m[0].id);
       if (d.length > 0) setDatasetId(d[0].id);
-    });
-  }, []);
+    }).catch(() => {});
+  }, [api]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -57,7 +57,7 @@ export default function TrainingCreatePage() {
             <select value={parentId} onChange={(e) => setParentId(e.target.value)}>
               {models.map((m) => (
                 <option key={m.id} value={m.id}>
-                  {m.id} · {m.name} · {m.labelSchemaName}
+                  {m.id} | {m.name} | {m.labelSchemaName}
                 </option>
               ))}
             </select>
@@ -67,7 +67,7 @@ export default function TrainingCreatePage() {
             <select value={datasetId} onChange={(e) => setDatasetId(e.target.value)}>
               {datasets.map((d) => (
                 <option key={d.id} value={d.id}>
-                  {d.id} · {d.name} · {d.imageCount.toLocaleString()} 张图片
+                  {d.id} | {d.name} | {d.imageCount} 张图片
                 </option>
               ))}
             </select>

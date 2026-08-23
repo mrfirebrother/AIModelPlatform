@@ -1,4 +1,4 @@
-﻿﻿# AI Model Platform - Docker Compose (Final)
+# AI Model Platform - Docker Compose (Final)
 # -------------------------------------------
 # Services: postgres, redis, migrate, api, inference, worker, scheduler, frontend
 # GPU passthrough requires NVIDIA Container Toolkit.
@@ -163,13 +163,8 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: ${GPU_COUNT:-1}
-              capabilities: [gpu]
+    networks:
+      - platform-net
 
   worker:
     build:
@@ -220,13 +215,6 @@ services:
         condition: service_completed_successfully
     networks:
       - platform-net
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: ${GPU_COUNT:-1}
-              capabilities: [gpu]
 
   # --- Celery Beat Scheduler ------------------------------------------------
   scheduler:

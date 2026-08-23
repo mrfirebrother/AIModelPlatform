@@ -1,9 +1,9 @@
-﻿import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createApi } from "../../lib/createApi";
 import type { ResourceStatus, GpuStatus, GpuModelEntry } from "../../lib/api";
 
 export default function ResourcesPage() {
-  const api = createApi();
+  const api = useMemo(() => createApi(), []);
   const [res, setRes] = useState<ResourceStatus | null>(null);
   const [gpuStatus, setGpuStatus] = useState<GpuStatus | null>(null);
   const [gpuModels, setGpuModels] = useState<GpuModelEntry[]>([]);
@@ -19,7 +19,7 @@ export default function ResourcesPage() {
   useEffect(() => {
     api.getResourceStatus().then(setRes);
     refresh();
-  }, []);
+  }, [api]);
 
   const handleLoad = async () => {
     if (!loadName.trim()) return;

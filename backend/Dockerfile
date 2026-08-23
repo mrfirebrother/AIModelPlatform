@@ -1,4 +1,4 @@
-﻿﻿FROM python:3.11-slim
+﻿FROM python:3.11-slim
 
 ARG GPU_ENABLED=false
 
@@ -10,10 +10,6 @@ WORKDIR /app
 
 COPY pyproject.toml alembic.ini ./
 RUN pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/ \
-    && tail -c +4 pyproject.toml > /tmp/pyproject.toml \
-    && mv /tmp/pyproject.toml pyproject.toml \
-    && tail -c +4 alembic.ini > /tmp/alembic.ini \
-    && mv /tmp/alembic.ini alembic.ini \
     && pip install --no-cache-dir .
 
 COPY app ./app

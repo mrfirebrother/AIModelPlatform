@@ -1,17 +1,77 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createApi } from "../../lib/createApi";
 import type { Dataset } from "../../lib/api";
 
 export default function DatasetsPage() {
-  const api = createApi();
+  const api = useMemo(() => createApi(), []);
   const [datasets, setDatasets] = useState<Dataset[]>([]);
+  const [showImport, setShowImport] = useState(false);
+  const [importPath, setImportPath] = useState("");
+  const [importName, setImportName] = useState("");
+  const [importing, setImporting] = useState(false);
 
-  useEffect(() => {
-    api.getDatasets().then(setDatasets);
-  }, []);
+  const loadDatasets = () => api.getDatasets().then(setDatasets);
+  useEffect(() => { loadDatasets(); }, [api]);
+
+  const handleImport = async () => {
+    if (!importPath) return;
+    setImporting(true);
+    try {
+      await api.createDataset({
+        name: importName || importPath.split("/").pop(),
+        sourcePath: importPath,
+      });
+      setShowImport(false);
+      setImportPath("");
+      setImportName("");
+      loadDatasets();
+    } catch (e) {
+      alert("导入失败: " + (e as Error).message);
+    }
+    setImporting(false);
+  };
 
   return (
-    <div className="card">
+    <>
+      <div className="top-actions" style={{ marginBottom: 16, display: "flex", gap: 10, alignItems: "center" }}>
+        <button className="btn primary" onClick={() => setShowImport(true)}>
+          + 导入数据集
+        </button>
+      </div>
+
+      {showImport && (
+        <div className="card" style={{ marginBottom: 14, padding: 20 }}>
+          <div className="card-title" style={{ marginBottom: 12 }}>导入 YOLO 数据集</div>
+          <div style={{ display: "grid", gap: 10, maxWidth: 500 }}>
+            <div>
+              <label style={{ fontSize: 11, color: "#666" }}>数据集目录路径</label>
+              <input
+                value={importPath}
+                onChange={(e) => setImportPath(e.target.value)}
+                placeholder="/path/to/yolo-dataset"
+                style={{ width: "100%", padding: "8px 10px", border: "1px solid #bed2df", borderRadius: 3, fontSize: 12, marginTop: 4 }}
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: 11, color: "#666" }}>数据集名称（可选）</label>
+              <input
+                value={importName}
+                onChange={(e) => setImportName(e.target.value)}
+                placeholder="fire-dataset"
+                style={{ width: "100%", padding: "8px 10px", border: "1px solid #bed2df", borderRadius: 3, fontSize: 12, marginTop: 4 }}
+              />
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button className="btn primary" onClick={handleImport} disabled={importing}>
+                {importing ? "导入中..." : "确认导入"}
+              </button>
+              <button className="btn" onClick={() => setShowImport(false)}>取消</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="card">
       <div className="card-head">
         <div>
           <div className="card-title">数据集管理</div>
@@ -96,6 +156,7 @@ export default function DatasetsPage() {
             )}
         </div>
       )}
-    </div>
+      </div>
+    </>
   );
 }
