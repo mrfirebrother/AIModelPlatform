@@ -518,4 +518,8 @@ export const mockApi: ApiClient = {
     await delay(300);
     return { success: true };
   },
+
+  async reviewEvaluation(_id: string, _status: string) {
+    await delay(200);
+  },
 };

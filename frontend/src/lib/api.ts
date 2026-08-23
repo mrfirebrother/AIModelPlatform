@@ -223,4 +223,5 @@ export interface ApiClient {
   getGpuModels(): Promise<GpuModelEntry[]>;
   gpuLoadModel(modelName: string, memoryMb: number): Promise<GpuLoadResponse>;
   gpuUnloadModel(modelName: string): Promise<GpuUnloadResponse>;
+  reviewEvaluation(id: string, status: string): Promise<void>;
 }

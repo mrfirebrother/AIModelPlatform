@@ -23,20 +23,12 @@ export default function EvaluationsPage() {
     s === "pending" ? "badge-orange" : s === "auto_passed" ? "badge-blue" : s === "approved" ? "badge-green" : "badge-red";
 
   const handleApprove = async (id: string) => {
-    await fetch(`/api/evaluations/${id}/review`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-API-Key": import.meta.env.VITE_API_KEY || "change-me" },
-      body: JSON.stringify({ human_status: "approved", human_conclusion: "\u901a\u8fc7\u9a8c\u6536" }),
-    });
+    await api.reviewEvaluation(id, "approved");
     setEvals((prev) => prev.map((e) => e.id === id ? { ...e, humanStatus: "approved" } : e));
   };
 
   const handleReject = async (id: string) => {
-    await fetch(`/api/evaluations/${id}/review`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-API-Key": import.meta.env.VITE_API_KEY || "change-me" },
-      body: JSON.stringify({ human_status: "rejected", human_conclusion: "\u4e0d\u7b26\u5408\u8981\u6c42" }),
-    });
+    await api.reviewEvaluation(id, "rejected");
     setEvals((prev) => prev.map((e) => e.id === id ? { ...e, humanStatus: "rejected" } : e));
   };
 

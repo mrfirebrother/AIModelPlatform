@@ -110,6 +110,8 @@ const realApi: ApiClient = {
     postJson<any>("/api/gpu/unload", { model_name: modelName }).then((r) => ({
       success: r.success,
     })),
+  reviewEvaluation: (id, status) =>
+    postJson(`/api/evaluations/${id}/review`, { human_status: status }),
 };
 
 export function createApi(): ApiClient {

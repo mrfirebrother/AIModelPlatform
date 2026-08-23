@@ -25,18 +25,18 @@ export default function BindingsPage() {
         <div className="card">
           <div className="card-head">
             <div>
-              <div className="card-title">{"\u6a21\u578b\u5173\u8054\u5217\u8868"}</div>
-              <div className="card-kicker">{bindings.length} {"\u4e2a\u5173\u8054"}</div>
+              <div className="card-title">模型关联列表</div>
+              <div className="card-kicker">{bindings.length} 个关联</div>
             </div>
           </div>
           <div className="table-wrap">
             <table>
               <thead>
                 <tr>
-                  <th>{"\u5173\u8054 ID"}</th>
-                  <th>{"\u540d\u79f0"}</th>
-                  <th>{"\u72b6\u6001"}</th>
-                  <th>{"\u64cd\u4f5c"}</th>
+                  <th>关联 ID</th>
+                  <th>名称</th>
+                  <th>状态</th>
+                  <th>操作</th>
                 </tr>
               </thead>
               <tbody>
@@ -46,37 +46,44 @@ export default function BindingsPage() {
                     <td>{b.name}</td>
                     <td>
                       <span className={`badge ${b.status === "active" ? "badge-green" : b.status === "unbound" ? "badge-gray" : "badge-orange"}`}>
-                        {b.status === "active" ? "\u6d3b\u8dc3" : b.status === "unbound" ? "\u672a\u7ed1\u5b9a" : b.status}
+                        {b.status === "active" ? "活跃" : b.status === "unbound" ? "未绑定" : b.status}
                       </span>
                     </td>
-                    <td><button className="btn small" onClick={(e) => { e.stopPropagation(); navigate("/releases"); }}>{"\u53d1\u5e03\u5386\u53f2"}</button></td>
+                    <td>
+                      <button className="btn small" onClick={(e) => { e.stopPropagation(); navigate("/releases"); }}>
+                        发布历史
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         </div>
+
         <div className="card">
           <div className="card-head">
             <div>
-              <div className="card-title">{"\u53d1\u5e03\u8bb0\u5f55"}</div>
-              <div className="card-kicker">{selected ? `${bindingReleases.length} {"\u6761\u8bb0\u5f55"}` : "\u9009\u62e9\u5173\u8054\u67e5\u770b\u8be6\u60c5"}</div>
+              <div className="card-title">发布记录</div>
+              <div className="card-kicker">
+                {selected ? `${bindingReleases.length} 条记录` : "选择关联查看详情"}
+              </div>
             </div>
           </div>
           <div className="card-body">
             {!selected ? (
-              <div className="empty-state">{"\u70b9\u51fb\u5de6\u4fa7\u5173\u8054\u67e5\u770b\u53d1\u5e03\u5386\u53f2"}</div>
+              <div className="empty-state">点击左侧关联查看发布历史</div>
             ) : bindingReleases.length === 0 ? (
-              <div className="empty-state">{"\u6682\u65e0\u53d1\u5e03\u8bb0\u5f55"}</div>
+              <div className="empty-state">暂无发布记录</div>
             ) : (
               <div className="detail-list">
                 {bindingReleases.map((r) => (
                   <div key={r.id} style={{ padding: "10px 12px", border: "1px solid #d3e2ec", borderRadius: 3, marginBottom: 8 }}>
-                    <div className="detail-row"><span>{"\u4fee\u8ba2"}</span><b>{`{"\u7b2c"}${r.revisionNo}{"\u6b21"}`}</b></div>
-                    <div className="detail-row"><span>{"\u6a21\u578b\u8282\u70b9"}</span><b>{r.modelNodeId}</b></div>
-                    <div className="detail-row"><span>{"\u7c7b\u578b"}</span><b><span className={`badge ${r.releaseType === "rollback" ? "badge-red" : "badge-blue"}`}>{r.releaseType === "rollback" ? "\u56de\u6eda" : "\u6b63\u5e38"}</span></b></div>
-                    <div className="detail-row"><span>{"\u72b6\u6001"}</span><b><span className={`badge ${r.status === "active" ? "badge-green" : "badge-gray"}`}>{r.status === "active" ? "\u6d3b\u8dc3" : r.status === "superseded" ? "\u5df2\u66ff\u6362" : r.status}</span></b></div>
-                    <div className="detail-row"><span>{"\u539f\u56e0"}</span><b>{r.reason}</b></div>
+                    <div className="detail-row"><span>修订</span><b>第 {r.revisionNo} 次</b></div>
+                    <div className="detail-row"><span>模型节点</span><b>{r.modelNodeId}</b></div>
+                    <div className="detail-row"><span>类型</span><b><span className={`badge ${r.releaseType === "rollback" ? "badge-red" : "badge-blue"}`}>{r.releaseType === "rollback" ? "回滚" : "正常"}</span></b></div>
+                    <div className="detail-row"><span>状态</span><b><span className={`badge ${r.status === "active" ? "badge-green" : "badge-gray"}`}>{r.status === "active" ? "活跃" : r.status === "superseded" ? "已替换" : r.status}</span></b></div>
+                    <div className="detail-row"><span>原因</span><b>{r.reason}</b></div>
                   </div>
                 ))}
               </div>
