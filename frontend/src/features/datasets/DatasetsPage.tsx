@@ -126,14 +126,14 @@ export default function DatasetsPage() {
                     <div style={{ fontWeight: 600 }}>{d.name}</div>
                     <div style={{ color: "var(--text-muted)", fontSize: 9, fontFamily: "Courier New, monospace" }}>{d.id}</div>
                   </td>
-                  <td>{d.labelSchemaName}</td>
-                  <td style={{ fontWeight: 600 }}>{d.imageCount.toLocaleString()}</td>
-                  <td>{d.trainCount.toLocaleString()}</td>
-                  <td>{d.valCount.toLocaleString()}</td>
-                  <td>{d.testCount.toLocaleString()}</td>
-                  <td>{d.source}</td>
-                  <td><span className={`badge ${d.validationStatus === "通过" ? "badge-green" : "badge-red"}`}>{d.validationStatus}</span></td>
-                  <td style={{ fontFamily: "Courier New, monospace", fontSize: 10 }}>{d.latestSnapshotId}</td>
+                  <td>{d.labelSchemaName ?? "-"}</td>
+                  <td style={{ fontWeight: 600 }}>{(d.imageCount ?? 0).toLocaleString()}</td>
+                  <td>{(d.trainCount ?? 0).toLocaleString()}</td>
+                  <td>{(d.valCount ?? 0).toLocaleString()}</td>
+                  <td>{(d.testCount ?? 0).toLocaleString()}</td>
+                  <td>{d.source ?? "-"}</td>
+                  <td><span className={`badge ${(d.validationStatus ?? "") === "通过" ? "badge-green" : "badge-red"}`}>{d.validationStatus ?? "-"}</span></td>
+                  <td style={{ fontFamily: "Courier New, monospace", fontSize: 10 }}>{d.latestSnapshotId ?? "-"}</td>
                 </tr>
               ))}
             </tbody>
