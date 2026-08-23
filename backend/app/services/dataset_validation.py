@@ -120,8 +120,17 @@ def validate_yolo_dataset(dataset_dir: Path) -> DatasetValidationResult:
 
     splits = ["train", "val", "test"]
     required_splits = ["train", "val"]
+
+    # Read split paths from data.yaml
+    train_path = data_yaml.get("train", "images/train") if data_yaml else "images/train"
+    val_path = data_yaml.get("val", "images/val") if data_yaml else "images/val"
+    test_path = data_yaml.get("test", "images/test") if data_yaml else "images/test"
+
+    split_img_paths = {"train": train_path, "val": val_path, "test": test_path}
+
     for split in required_splits:
-        img_dir = dataset_dir / "images" / split
+        img_rel = split_img_paths[split]
+        img_dir = dataset_dir / img_rel
         if not img_dir.exists():
             result.errors.append(
                 DatasetValidationError(
@@ -130,7 +139,7 @@ def validate_yolo_dataset(dataset_dir: Path) -> DatasetValidationResult:
                 )
             )
 
-    has_test = (dataset_dir / "images" / "test").exists()
+    has_test = (dataset_dir / split_img_paths["test"]).exists()
     if not has_test:
         result.warnings.append(
             DatasetValidationWarning(code="missing_test_split", message="No test split found")
@@ -140,8 +149,9 @@ def validate_yolo_dataset(dataset_dir: Path) -> DatasetValidationResult:
     all_class_ids: set[int] = set()
 
     for split in splits:
-        img_dir = dataset_dir / "images" / split
-        lbl_dir = dataset_dir / "labels" / split
+        img_dir = dataset_dir / split_img_paths[split]
+        # Derive label dir from image dir
+        lbl_dir = img_dir.parent / "labels" / img_dir.name if img_dir.parent.name == "images" else img_dir.parent.parent / "labels" / img_dir.name
         if not img_dir.exists():
             continue
 
@@ -213,14 +223,16 @@ def validate_yolo_dataset(dataset_dir: Path) -> DatasetValidationResult:
             result.test_count = len(split_images)
 
     for lbl_dir_split in splits:
-        lbl_dir = dataset_dir / "labels" / lbl_dir_split
+        img_rel = split_img_paths[lbl_dir_split]
+        img_dir = dataset_dir / img_rel
+        lbl_dir = img_dir.parent / "labels" / img_dir.name if img_dir.parent.name == "images" else img_dir.parent.parent / "labels" / img_dir.name
         if not lbl_dir.exists():
             continue
         for lbl_file in sorted(lbl_dir.iterdir()):
             if lbl_file.suffix != ".txt":
                 continue
             alt_paths = [
-                dataset_dir / "images" / lbl_dir_split / (lbl_file.stem + ext)
+                img_dir / (lbl_file.stem + ext)
                 for ext in IMAGE_EXTENSIONS
             ]
             if not any(p.exists() for p in alt_paths):
@@ -232,13 +244,14 @@ def validate_yolo_dataset(dataset_dir: Path) -> DatasetValidationResult:
                 )
 
     for img_dir_split in splits:
-        img_dir = dataset_dir / "images" / img_dir_split
+        img_rel = split_img_paths[img_dir_split]
+        img_dir = dataset_dir / img_rel
         if not img_dir.exists():
             continue
         for img_file in sorted(img_dir.iterdir()):
             if img_file.suffix.lower() not in IMAGE_EXTENSIONS:
                 continue
-            label_file = dataset_dir / "labels" / img_dir_split / (img_file.stem + ".txt")
+            label_file = img_dir.parent / "labels" / img_dir.name / (img_file.stem + ".txt")
             if not label_file.exists():
                 result.warnings.append(
                     DatasetValidationWarning(
