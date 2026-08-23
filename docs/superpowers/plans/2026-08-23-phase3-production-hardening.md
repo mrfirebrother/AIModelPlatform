@@ -24,25 +24,25 @@ Phase 2 (10 tasks): Real YOLO Training + Inference + GPU
 
 ---
 
-## Task 1: NVR Integration API
+## Task 1: External Inference API
 
 **Files:**
-- Create: `backend/app/api/routes/nvr.py`
-- Create: `backend/app/schemas/nvr.py`
-- Create: `backend/app/services/nvr_service.py`
-- Create: `backend/tests/unit/test_nvr_service.py`
-- Create: `backend/tests/integration/test_nvr_api.py`
+- Create: `backend/app/api/routes/inference.py`
+- Create: `backend/app/schemas/inference.py`
+- Create: `backend/app/services/inference_service.py`
+- Create: `backend/tests/unit/test_inference_service.py`
+- Create: `backend/tests/integration/test_inference_api.py`
 
-**Purpose:** Provide a stable inference endpoint for NVR AnalysisService.
+**Purpose:** 提供通用的外部推理接口，支持任意调用方接入。
 
-- [ ] **Step 1: Design NVR API contract**
-  - POST /api/nvr/infer: 接收图片，返回识别结果
-  - POST /api/nvr/infer/batch: 批量推理
-  - GET /api/nvr/models: 查询可用模型
+- [ ] **Step 1: Design inference API contract**
+  - POST /api/infer: 接收图片，返回识别结果
+  - POST /api/infer/batch: 批量推理
+  - GET /api/infer/models: 查询可用模型
   - 请求包含 binding_id 或 model_id + input
   - 响应包含 results、latency、model_version
 
-- [ ] **Step 2: Implement NvrService**
+- [ ] **Step 2: Implement InferenceService**
   - 解析 binding_id 或 model_id
   - 从数据库获取模型和配置
   - 调用推理引擎
@@ -56,7 +56,7 @@ Phase 2 (10 tasks): Real YOLO Training + Inference + GPU
   - 结果缓存（可选）
 
 - [ ] **Step 4: Write tests**
-  - 单元测试：NvrService 逻辑
+  - 单元测试：InferenceService 逻辑
   - 集成测试：完整推理流程
   - 错误场景：模型不存在、GPU 不可用、输入无效
 
@@ -321,3 +321,4 @@ Phase 2 (10 tasks): Real YOLO Training + Inference + GPU
 - All files must have UTF-8 BOM for Python
 - Frontend files must NOT have BOM
 - Run `python -m pytest -c NUL` for test execution
+- Task 1 is generic inference API, not NVR-specific
