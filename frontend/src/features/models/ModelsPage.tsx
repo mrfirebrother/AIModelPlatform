@@ -8,7 +8,6 @@ export default function ModelsPage() {
   const api = useMemo(() => createApi(), []);
   const toast = useToast();
   const navigate = useNavigate();
-  const toast = useToast();
   const [nodes, setNodes] = useState<ModelNode[]>([]);
   const [filter, setFilter] = useState<string>("all");
   const [showImport, setShowImport] = useState(false);
