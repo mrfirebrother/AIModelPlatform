@@ -45,13 +45,26 @@ def find_expired_attempts(session: Session) -> list[TrainingAttempt]:
 
 
 def expire_attempt(session: Session, attempt_id: UUID) -> TrainingAttempt:
-    attempt = session.get(TrainingAttempt, attempt_id, with_for_update=True)
+    from backend.app.models import TrainingTask
+
+    attempt = session.get(TrainingAttempt, attempt_id)
     if attempt is None:
         raise ValueError(f"Training attempt {attempt_id} not found")
     if attempt.status not in ("running", "recovering"):
         return attempt
+
+    task = session.get(TrainingTask, attempt.task_id, with_for_update=True)
+    attempt = session.get(TrainingAttempt, attempt_id, with_for_update=True)
+    if attempt.status not in ("running", "recovering"):
+        return attempt
+
+    if task is not None and task.status not in ("completed", "cancelled", "failed"):
+        task.status = "failed"
+        task.failure_reason = "Lease expired"
+
     attempt.status = "failed"
     attempt.last_error = "Lease expired"
     attempt.finished_at = datetime.now(timezone.utc)
+
     session.flush()
     return attempt

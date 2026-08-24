@@ -53,6 +53,16 @@ def reconcile_leases() -> str:
         for gpu_lease in expired_gpu_leases:
             try:
                 expire_gpu_lease(session, gpu_lease.id)
+                if (
+                    gpu_lease.owner_type == "training_attempt"
+                    and gpu_lease.owner_id is not None
+                ):
+                    attempt = session.get(TrainingAttempt, gpu_lease.owner_id)
+                    if attempt is not None and attempt.status in (
+                        "running",
+                        "recovering",
+                    ):
+                        expire_attempt(session, attempt.id)
                 count += 1
             except Exception:
                 logger.exception("Failed to expire GPU lease %s", gpu_lease.id)

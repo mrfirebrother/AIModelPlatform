@@ -135,13 +135,16 @@ def complete_attempt(
     checkpoint_info: dict | None = None,
     label_schema_id: UUID | None = None,
 ) -> ModelNode:
-    attempt = session.get(TrainingAttempt, attempt_id, with_for_update=True)
+    attempt = session.get(TrainingAttempt, attempt_id)
     if attempt is None:
         raise ValueError(f"Training attempt {attempt_id} not found")
     if attempt.status not in ("pending", "running", "recovering"):
         raise ValueError(f"Cannot complete attempt in '{attempt.status}' status")
 
     task = session.get(TrainingTask, attempt.task_id, with_for_update=True)
+    attempt = session.get(TrainingAttempt, attempt_id, with_for_update=True)
+    if attempt.status not in ("pending", "running", "recovering"):
+        raise ValueError(f"Cannot complete attempt in '{attempt.status}' status")
     if task is None:
         raise ValueError(f"Training task {attempt.task_id} not found")
 
@@ -202,15 +205,16 @@ def fail_attempt(
     attempt_id: UUID,
     error: str,
 ) -> TrainingAttempt:
-    attempt = session.get(TrainingAttempt, attempt_id, with_for_update=True)
+    attempt = session.get(TrainingAttempt, attempt_id)
     if attempt is None:
         raise ValueError(f"Training attempt {attempt_id} not found")
     if attempt.status not in ("pending", "running", "recovering"):
         raise ValueError(f"Cannot fail attempt in '{attempt.status}' status")
 
-    attempt.status = "failed"
-    attempt.last_error = error
-    attempt.finished_at = datetime.now(timezone.utc)
+    task = session.get(TrainingTask, attempt.task_id, with_for_update=True)
+    attempt = session.get(TrainingAttempt, attempt_id, with_for_update=True)
+    if attempt.status not in ("pending", "running", "recovering"):
+        raise ValueError(f"Cannot fail attempt in '{attempt.status}' status")
 
     running = session.scalar(
         select(TrainingAttempt).where(
@@ -220,9 +224,12 @@ def fail_attempt(
         )
     )
     if running is None:
-        task = session.get(TrainingTask, attempt.task_id, with_for_update=True)
         if task is not None and task.status not in ("completed", "cancelled", "failed"):
             task.status = "failed"
+
+    attempt.status = "failed"
+    attempt.last_error = error
+    attempt.finished_at = datetime.now(timezone.utc)
 
     session.flush()
     return attempt
