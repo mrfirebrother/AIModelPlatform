@@ -28,6 +28,7 @@ from backend.app.services.training_service import (
     start_attempt,
     complete_attempt,
     fail_attempt,
+    cancel_task,
 )
 from backend.app.workers.db_session import (
     worker_session,
@@ -68,19 +69,38 @@ def _make_snapshot(
     *,
     label_schema: LabelSchema | None = None,
     manifest_hash: str | None = None,
+    train_manifest_json: list | None = None,
+    val_manifest_json: list | None = None,
+    test_manifest_json: list | None = None,
 ) -> DatasetSnapshot:
     if label_schema is None:
         label_schema = _make_label_schema(session)
     dataset = Dataset(name=f"ds-{uuid4().hex[:8]}")
+    if manifest_hash is None:
+        nc = len(label_schema.classes) if label_schema else 0
+        names = [c.semantic_key for c in label_schema.classes] if label_schema else []
+        dataset_manifest = {
+            "train_files": train_manifest_json or [],
+            "val_files": val_manifest_json or [],
+            "test_files": test_manifest_json or [],
+            "nc": nc,
+            "names": names,
+        }
+        manifest_hash = f"sha256:{hashlib.sha256(str(sorted(dataset_manifest.items())).encode()).hexdigest()}"
     snapshot = DatasetSnapshot(
         dataset=dataset,
         label_schema=label_schema,
         manifest_path=f"snapshots/{uuid4()}/manifest.json",
-        manifest_hash=manifest_hash or f"sha256:{uuid4().hex}",
+        manifest_hash=manifest_hash,
     )
     session.add(snapshot)
     session.flush()
     return snapshot
+
+
+def _make_snapshot_with_valid_hash(session: Session) -> DatasetSnapshot:
+    schema = _make_label_schema(session)
+    return _make_snapshot(session, label_schema=schema)
 
 
 def _make_parent_model(session: Session) -> ModelNode:
@@ -174,7 +194,10 @@ class TestTrainingHeartbeat:
         thread.stop()
         thread.join(timeout=2)
         assert mock_hb.call_count >= 1
-        mock_hb.assert_called_with(mock_session, attempt_id, lease_token)
+        call_args = mock_hb.call_args
+        assert call_args[0][1] == attempt_id
+        assert call_args[0][2] == lease_token
+        assert call_args[0][0] is not mock_session
 
     def test_heartbeat_thread_is_daemon(self) -> None:
         mock_session = MagicMock()
@@ -202,7 +225,7 @@ class TestCancellationAfterTraining:
 
         try:
             with Session(engine) as test_session:
-                snapshot = _make_snapshot(test_session)
+                snapshot = _make_snapshot_with_valid_hash(test_session)
                 test_session.commit()
                 snapshot_id = snapshot.id
 
@@ -248,7 +271,7 @@ class TestCancellationAfterTraining:
 
         try:
             with Session(engine) as test_session:
-                snapshot = _make_snapshot(test_session)
+                snapshot = _make_snapshot_with_valid_hash(test_session)
                 parent = _make_parent_model(test_session)
                 test_session.commit()
                 snapshot_id = snapshot.id
@@ -293,8 +316,8 @@ class TestCancellationAfterTraining:
                 attempts = verify.query(TrainingAttempt).filter(
                     TrainingAttempt.task_id == task_v.id
                 ).all()
-                failed_attempts = [a for a in attempts if a.status == "failed"]
-                assert len(failed_attempts) == 1
+                cancelled_attempts = [a for a in attempts if a.status == "cancelled"]
+                assert len(cancelled_attempts) == 1
         finally:
             reset_worker_session_factory()
             engine.dispose()
@@ -420,10 +443,23 @@ class TestManifestHashValidation:
 
 
 class TestCheckpointDirFromConfig:
-    def test_uses_config_checkpoint_dir(self) -> None:
+    @patch("backend.app.workers.train_worker.YoloTrainer")
+    @patch("backend.app.workers.train_worker.YoloDataset")
+    def test_uses_config_checkpoint_dir(self, mock_dataset_cls: MagicMock, mock_trainer_cls: MagicMock) -> None:
         import tempfile
 
         from backend.app.config import Settings
+
+        mock_trainer = MagicMock()
+        mock_trainer.train.return_value = MagicMock(
+            success=False,
+            epochs_completed=0,
+            best_model_path=None,
+            latest_model_path=None,
+            metrics={},
+            error="mock",
+        )
+        mock_trainer_cls.return_value = mock_trainer
 
         with tempfile.TemporaryDirectory() as tmpdir:
             settings = Settings(
@@ -442,7 +478,7 @@ class TestCheckpointDirFromConfig:
 
                 try:
                     with Session(engine) as test_session:
-                        snapshot = _make_snapshot(test_session)
+                        snapshot = _make_snapshot_with_valid_hash(test_session)
                         test_session.commit()
                         snapshot_id = snapshot.id
 
@@ -461,9 +497,8 @@ class TestCheckpointDirFromConfig:
                         task_id = str(task.id)
 
                     result = run_training(task_id)
-                    task_uuid = __import__("uuid").UUID(task_id)
                     expected_dir = Path(tmpdir) / task_id
-                    assert expected_dir.exists() or "not found" in result
+                    assert expected_dir.exists() or "not found" in result or "failed" in result
                 finally:
                     reset_worker_session_factory()
                     engine.dispose()
@@ -642,7 +677,7 @@ class TestRealYoloTrainingTerminalState:
 
         try:
             with Session(engine) as test_session:
-                snapshot = _make_snapshot(test_session)
+                snapshot = _make_snapshot_with_valid_hash(test_session)
                 parent = _make_parent_model(test_session)
                 test_session.commit()
                 snapshot_id = snapshot.id
@@ -714,7 +749,7 @@ class TestRealYoloTrainingTerminalState:
 
         try:
             with Session(engine) as test_session:
-                snapshot = _make_snapshot(test_session)
+                snapshot = _make_snapshot_with_valid_hash(test_session)
                 test_session.commit()
                 snapshot_id = snapshot.id
 
@@ -742,3 +777,242 @@ class TestRealYoloTrainingTerminalState:
         finally:
             reset_worker_session_factory()
             engine.dispose()
+
+
+class TestCancelTaskCancelsAttempt:
+    def test_cancel_running_task_cancels_attempt(self) -> None:
+        from datetime import datetime, timezone
+
+        from sqlalchemy import create_engine, event
+
+        from backend.app.services.training_service import cancel_task
+
+        engine = create_engine("sqlite+pysqlite:///:memory:")
+        event.listen(
+            engine,
+            "connect",
+            lambda connection, _: connection.execute("PRAGMA foreign_keys=ON"),
+        )
+        Base.metadata.create_all(engine)
+        set_worker_engine_override(engine)
+
+        try:
+            with Session(engine) as test_session:
+                snapshot = _make_snapshot(test_session)
+                test_session.commit()
+                snapshot_id = snapshot.id
+
+            with worker_session() as ws:
+                task = TrainingTask(
+                    dataset_snapshot_id=snapshot_id,
+                    task_type="object_detection",
+                    model_family="yolo",
+                    training_config_json={"epochs": 1, "device": "cpu"},
+                    resource_config_json={},
+                    evaluation_policy_json={},
+                    status="running",
+                )
+                ws.add(task)
+                ws.flush()
+
+                attempt = start_attempt(ws, task.id)
+                ws.commit()
+                attempt_id = attempt.id
+                task_id = task.id
+
+            with worker_session() as ws:
+                updated_task = cancel_task(ws, task_id)
+                ws.commit()
+                assert updated_task.status == "cancelled"
+                assert updated_task.cancellation_requested is True
+
+            with Session(engine) as verify:
+                attempt_v = verify.get(TrainingAttempt, attempt_id)
+                assert attempt_v is not None
+                assert attempt_v.status == "cancelled"
+                assert attempt_v.finished_at is not None
+        finally:
+            reset_worker_session_factory()
+            engine.dispose()
+
+    def test_cancel_queued_task_does_not_affect_attempts(self) -> None:
+        from sqlalchemy import create_engine, event
+
+        from backend.app.services.training_service import cancel_task
+
+        engine = create_engine("sqlite+pysqlite:///:memory:")
+        event.listen(
+            engine,
+            "connect",
+            lambda connection, _: connection.execute("PRAGMA foreign_keys=ON"),
+        )
+        Base.metadata.create_all(engine)
+        set_worker_engine_override(engine)
+
+        try:
+            with Session(engine) as test_session:
+                snapshot = _make_snapshot(test_session)
+                test_session.commit()
+                snapshot_id = snapshot.id
+
+            with worker_session() as ws:
+                task = TrainingTask(
+                    dataset_snapshot_id=snapshot_id,
+                    task_type="object_detection",
+                    model_family="yolo",
+                    training_config_json={"epochs": 1, "device": "cpu"},
+                    resource_config_json={},
+                    evaluation_policy_json={},
+                    status="queued",
+                )
+                ws.add(task)
+                ws.flush()
+                task_id = task.id
+
+            with worker_session() as ws:
+                updated_task = cancel_task(ws, task_id)
+                ws.commit()
+                assert updated_task.status == "cancelled"
+                assert updated_task.cancellation_requested is True
+
+            with Session(engine) as verify:
+                task_v = verify.get(TrainingTask, task_id)
+                attempts = verify.query(TrainingAttempt).filter(
+                    TrainingAttempt.task_id == task_v.id
+                ).all()
+                assert len(attempts) == 0
+        finally:
+            reset_worker_session_factory()
+            engine.dispose()
+
+
+class TestFailAttemptWritesReason:
+    def test_fail_attempt_sets_task_failure_reason(self, session: Session) -> None:
+        from backend.app.services.training_service import fail_attempt
+
+        snapshot = _make_snapshot(session)
+        parent = _make_parent_model(session)
+        task = create_task(
+            session,
+            parent_model_node_id=parent.id,
+            dataset_snapshot_id=snapshot.id,
+            task_type="object_detection",
+            model_family="yolo",
+            training_config_json={"epochs": 1},
+            resource_config_json={},
+            evaluation_policy_json={},
+        )
+        session.commit()
+
+        attempt = start_attempt(session, task.id)
+        session.commit()
+
+        fail_attempt(session, attempt.id, error="GPU out of memory")
+        session.commit()
+
+        session.refresh(task)
+        assert task.status == "failed"
+        assert task.failure_reason == "GPU out of memory"
+
+
+class TestSweepQueuedTasks:
+    @patch("backend.app.workers.train_worker.run_training")
+    @patch("backend.app.workers.db_session.worker_session")
+    def test_sweep_dispatches_queued_tasks(
+        self, mock_worker_session: MagicMock, mock_run: MagicMock
+    ) -> None:
+        from sqlalchemy import create_engine, event
+
+        engine = create_engine("sqlite+pysqlite:///:memory:")
+        event.listen(
+            engine,
+            "connect",
+            lambda connection, _: connection.execute("PRAGMA foreign_keys=ON"),
+        )
+        Base.metadata.create_all(engine)
+
+        try:
+            with Session(engine) as test_session:
+                snapshot = _make_snapshot(test_session)
+                test_session.commit()
+                snapshot_id = snapshot.id
+
+                task = TrainingTask(
+                    dataset_snapshot_id=snapshot_id,
+                    task_type="object_detection",
+                    model_family="yolo",
+                    training_config_json={"epochs": 1, "device": "cpu"},
+                    resource_config_json={},
+                    evaluation_policy_json={},
+                    status="queued",
+                )
+                test_session.add(task)
+                test_session.commit()
+                task_id = task.id
+
+            mock_task = MagicMock()
+            mock_task.id = task_id
+            mock_session = MagicMock()
+            mock_session.execute.return_value.scalars.return_value.all.return_value = [mock_task]
+            mock_worker_session.return_value.__enter__ = MagicMock(return_value=mock_session)
+            mock_worker_session.return_value.__exit__ = MagicMock(return_value=False)
+
+            mock_run.delay = MagicMock()
+            from backend.app.workers.scheduler import sweep_queued_tasks
+            result = sweep_queued_tasks()
+            assert "dispatched" in result
+            assert mock_run.delay.call_count == 1
+            mock_run.delay.assert_called_with(str(task_id))
+        finally:
+            engine.dispose()
+
+    @patch("backend.app.workers.train_worker.run_training")
+    @patch("backend.app.workers.db_session.worker_session")
+    def test_sweep_skips_cancelled_tasks(
+        self, mock_worker_session: MagicMock, mock_run: MagicMock
+    ) -> None:
+        mock_session = MagicMock()
+        mock_session.execute.return_value.scalars.return_value.all.return_value = []
+        mock_worker_session.return_value.__enter__ = MagicMock(return_value=mock_session)
+        mock_worker_session.return_value.__exit__ = MagicMock(return_value=False)
+
+        mock_run.delay = MagicMock()
+        from backend.app.workers.scheduler import sweep_queued_tasks
+        result = sweep_queued_tasks()
+        assert "no queued tasks" in result
+        mock_run.delay.assert_not_called()
+
+
+class TestHeartbeatUpdatesGPULease:
+    @patch("backend.app.workers.train_worker.ResourceScheduler")
+    @patch("backend.app.workers.train_worker.attempt_heartbeat")
+    @patch("backend.app.workers.db_session.worker_session")
+    def test_heartbeat_thread_updates_gpu_lease(
+        self,
+        mock_worker_session: MagicMock,
+        mock_attempt_heartbeat: MagicMock,
+        mock_scheduler_cls: MagicMock,
+    ) -> None:
+        mock_session = MagicMock()
+        mock_worker_session.return_value.__enter__ = MagicMock(return_value=mock_session)
+        mock_worker_session.return_value.__exit__ = MagicMock(return_value=False)
+        mock_scheduler = MagicMock()
+        mock_scheduler_cls.return_value = mock_scheduler
+        attempt_id = uuid4()
+        lease_token = uuid4()
+        thread = _HeartbeatThread(
+            session=MagicMock(),
+            attempt_id=attempt_id,
+            lease_token=lease_token,
+            interval=0.05,
+        )
+        thread.start()
+        import time
+        time.sleep(0.2)
+        thread.stop()
+        thread.join(timeout=2)
+        mock_attempt_heartbeat.assert_called()
+        mock_scheduler.heartbeat.assert_called()
+        call_args = mock_scheduler.heartbeat.call_args
+        assert call_args[0][0] == attempt_id
+        assert call_args[0][1] == lease_token

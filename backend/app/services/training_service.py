@@ -226,6 +226,7 @@ def fail_attempt(
     if running is None:
         if task is not None and task.status not in ("completed", "cancelled", "failed"):
             task.status = "failed"
+            task.failure_reason = error
 
     attempt.status = "failed"
     attempt.last_error = error
@@ -245,6 +246,17 @@ def cancel_task(session: Session, task_id: UUID) -> TrainingTask:
     task.cancellation_requested = True
 
     if task.status == "queued":
+        task.status = "cancelled"
+    elif task.status in ("running", "recovering"):
+        attempt = session.scalar(
+            select(TrainingAttempt).where(
+                TrainingAttempt.task_id == task_id,
+                TrainingAttempt.status.in_(["running", "recovering"]),
+            ).with_for_update()
+        )
+        if attempt is not None:
+            attempt.status = "cancelled"
+            attempt.finished_at = datetime.now(timezone.utc)
         task.status = "cancelled"
 
     session.flush()

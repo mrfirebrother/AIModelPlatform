@@ -11,7 +11,6 @@ from sqlalchemy.orm import Session
 
 from backend.app.config import get_settings
 from backend.app.models import TrainingAttempt, TrainingTask
-from backend.app.training.checkpoint_manager import CheckpointManager
 from backend.app.training.resource_scheduler import (
     InsufficientGPUError,
     ResourceScheduler,
@@ -59,7 +58,7 @@ def run_training(task_id: str) -> str:
     8. Return result summary
     """
     from backend.app.workers.db_session import worker_session
-    from backend.app.services.training_service import start_attempt, complete_attempt, fail_attempt
+    from backend.app.services.training_service import start_attempt, complete_attempt, cancel_task, fail_attempt
 
     logger.info("Starting training for task %s", task_id)
 
@@ -85,7 +84,7 @@ def run_training(task_id: str) -> str:
 
         if task.cancellation_requested:
             logger.info("Task %s has cancellation requested, aborting", task_id)
-            task.status = "cancelled"
+            cancel_task(session, task.id)
             session.commit()
             return f"task {task_id} cancelled"
 
@@ -114,6 +113,18 @@ def run_training(task_id: str) -> str:
         output_dir.mkdir(parents=True, exist_ok=True)
 
         training_config = task.training_config_json or {}
+
+        if training_config.get("device", "cpu") != "cpu":
+            try:
+                import torch
+                if not torch.cuda.is_available():
+                    fail_attempt(session, attempt.id, error="CUDA requested but not available")
+                    session.commit()
+                    return f"task {task_id} failed: CUDA requested but not available"
+            except ImportError:
+                fail_attempt(session, attempt.id, error="CUDA requested but torch not installed")
+                session.commit()
+                return f"task {task_id} failed: CUDA requested but torch not installed"
         parent_model_path = None
         if task.parent_model_node_id is not None:
             parent_model = session.get(type(task).parent_model_node.property.mapper.class_, task.parent_model_node_id)
@@ -169,8 +180,8 @@ def run_training(task_id: str) -> str:
             session.refresh(task)
 
             if task.cancellation_requested:
-                logger.info("Task %s was cancelled during training, failing attempt", task_id)
-                fail_attempt(session, attempt.id, error="Cancelled during training")
+                logger.info("Task %s was cancelled during training, cancelling task", task_id)
+                cancel_task(session, task.id)
                 session.commit()
                 return f"task {task_id} cancelled during training"
 
@@ -298,15 +309,6 @@ def execute_training(
             error=str(exc),
         )
 
-    except Exception as exc:
-        return TrainResult(
-            success=False,
-            epochs_completed=0,
-            best_model_path=None,
-            latest_model_path=None,
-            error=str(exc),
-        )
-
     finally:
         if heartbeat_thread is not None:
             heartbeat_thread.stop()
@@ -316,7 +318,11 @@ def execute_training(
 
 
 class _HeartbeatThread(threading.Thread):
-    """Daemon thread that sends periodic heartbeats for a training attempt."""
+    """Daemon thread that sends periodic heartbeats for a training attempt.
+
+    Uses its own independent DB session so it does not share state with the
+    main training session, avoiding race conditions and detached-instance errors.
+    """
 
     def __init__(
         self,
@@ -336,13 +342,18 @@ class _HeartbeatThread(threading.Thread):
         self._stop_event.set()
 
     def run(self) -> None:
+        from backend.app.workers.db_session import worker_session
+
         while not self._stop_event.is_set():
             self._stop_event.wait(self._interval)
             if self._stop_event.is_set():
                 break
             try:
-                attempt_heartbeat(self._session, self._attempt_id, self._lease_token)
-                self._session.flush()
+                with worker_session() as hb_session:
+                    attempt_heartbeat(hb_session, self._attempt_id, self._lease_token)
+                    if self._lease_token is not None:
+                        scheduler = ResourceScheduler(session=hb_session, cpu_mode=True)
+                        scheduler.heartbeat(self._attempt_id, self._lease_token)
             except Exception:
                 logger.warning(
                     "Heartbeat failed for attempt %s", self._attempt_id

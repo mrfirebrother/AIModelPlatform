@@ -69,3 +69,37 @@ def reconcile_leases() -> str:
 
         session.flush()
         return f"expired {count} lease(s)"
+
+
+@celery_app.task(name="platform.scheduler.sweep_queued_tasks")
+def sweep_queued_tasks() -> str:
+    """Find tasks stuck in 'queued' status and re-dispatch them.
+
+    Handles the crash window where a task was committed but Celery dispatch
+    failed or the process crashed before the worker picked up the task.
+    """
+    from backend.app.workers.db_session import worker_session
+    from backend.app.workers.train_worker import run_training
+
+    with worker_session() as session:
+        queued_tasks = list(
+            session.execute(
+                select(TrainingTask).where(
+                    TrainingTask.status == "queued",
+                    TrainingTask.cancellation_requested == False,
+                )
+            ).scalars().all()
+        )
+
+        if not queued_tasks:
+            return "no queued tasks found"
+
+        dispatched = 0
+        for task in queued_tasks:
+            try:
+                run_training.delay(str(task.id))
+                dispatched += 1
+            except Exception:
+                logger.exception("Failed to dispatch queued task %s", task.id)
+
+        return f"dispatched {dispatched} queued task(s)"
