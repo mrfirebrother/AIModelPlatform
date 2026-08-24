@@ -122,9 +122,26 @@ def create_training_task(
             status="success",
             summary_json={"task_id": str(task.id)},
         )
-        # Dispatch Celery task
+        db.flush()
+        task_id = str(task.id)
+
         from backend.app.workers.train_worker import run_training
-        run_training.delay(str(task.id))
+        try:
+            run_training.delay(task_id)
+        except Exception as exc:
+            task.status = "failed"
+            task.failure_reason = f"Dispatch failed: {exc}"
+            db.flush()
+            log_operation(
+                db,
+                operation_type="training.task.dispatch",
+                resource_type="training_task",
+                resource_id=task.id,
+                status="error",
+                error_summary=str(exc),
+            )
+            return _to_training_task_response(task)
+
         return _to_training_task_response(task)
     except ValueError as exc:
         log_operation(

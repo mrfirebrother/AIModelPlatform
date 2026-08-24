@@ -1037,3 +1037,159 @@ class TestRealYoloClosedLoop:
         assert rollback.release_type == "rollback"
         assert rollback.rollback_target_release_id == release.id
         assert rollback.revision_no == 2
+
+
+# ---------------------------------------------------------------------------
+# 16. Worker closed-loop smoke test
+# ---------------------------------------------------------------------------
+
+class TestWorkerClosedLoopSmoke:
+    def test_worker_receives_and_processes_task(self, session, builder, monkeypatch):
+        from backend.app.workers.train_worker import run_training, execute_training
+        from backend.app.workers.db_session import set_worker_engine_override, reset_worker_session_factory
+        from backend.app.models import LabelSchema
+        from backend.app.training.yolo_trainer import TrainResult
+        import tempfile
+
+        engine = session.get_bind()
+        set_worker_engine_override(engine)
+
+        try:
+            label_schema = LabelSchema(name="smoke-schema", status="active")
+            session.add(label_schema)
+            session.flush()
+
+            from backend.app.models.label_schema import LabelSchemaClass
+            for class_id, semantic_key in enumerate(["crack", "spalling"]):
+                cls = LabelSchemaClass(
+                    schema_id=label_schema.id,
+                    class_id=class_id,
+                    semantic_key=semantic_key,
+                    display_name=semantic_key.title(),
+                )
+                session.add(cls)
+            session.flush()
+
+            root = builder.root_model(
+                name="smoke-root-model",
+                label_schema=label_schema,
+            )
+
+            ds = builder.first_gen_dataset(label_schema=root.label_schema)
+
+            task = training_service.create_task(
+                session,
+                parent_model_node_id=root.model_node.id,
+                dataset_snapshot_id=ds.snapshot.id,
+                task_type="object_detection",
+                model_family="yolo",
+                training_config_json={"epochs": 1, "batch": 2, "device": "cpu"},
+                resource_config_json={"memory_mb": 256},
+                evaluation_policy_json={"min_mAP50": 0.0},
+            )
+            session.commit()
+            assert task.status == "queued"
+
+            def fake_execute_training(**kwargs):
+                output_dir = kwargs["output_dir"]
+                output_dir.mkdir(parents=True, exist_ok=True)
+                best_path = output_dir / "best.pt"
+                best_path.write_bytes(b"fake model")
+                return TrainResult(
+                    success=True,
+                    epochs_completed=1,
+                    best_model_path=str(best_path),
+                    latest_model_path=str(best_path),
+                    metrics={"mAP50": 0.5},
+                )
+
+            monkeypatch.setattr(
+                "backend.app.workers.train_worker.execute_training",
+                fake_execute_training,
+            )
+
+            result = run_training(str(task.id))
+
+            with Session(engine) as verify:
+                refreshed = verify.get(TrainingTask, task.id)
+                assert refreshed.status == "completed", f"Task status: {refreshed.status}, result: {result}"
+                assert len(refreshed.attempts) > 0
+
+        finally:
+            reset_worker_session_factory()
+
+    def test_worker_handles_missing_task_gracefully(self):
+        from backend.app.workers.train_worker import run_training
+        from backend.app.workers.db_session import set_worker_engine_override, reset_worker_session_factory
+        from sqlalchemy import create_engine, event
+        from backend.app.models import Base
+        import uuid
+
+        engine = create_engine("sqlite+pysqlite:///:memory:")
+        event.listen(
+            engine,
+            "connect",
+            lambda connection, _: connection.execute("PRAGMA foreign_keys=ON"),
+        )
+        Base.metadata.create_all(engine)
+        set_worker_engine_override(engine)
+
+        try:
+            fake_id = str(uuid.uuid4())
+            result = run_training(fake_id)
+            assert "not found" in result
+        finally:
+            reset_worker_session_factory()
+            engine.dispose()
+
+    def test_worker_handles_terminal_task_idempotently(self, session, builder):
+        from backend.app.workers.train_worker import run_training
+        from backend.app.workers.db_session import set_worker_engine_override, reset_worker_session_factory
+
+        engine = session.get_bind()
+        set_worker_engine_override(engine)
+
+        try:
+            root = builder.root_model(
+                name="idempotent-root-model",
+                label_schema=builder._create_label_schema(
+                    name="idempotent-schema",
+                    classes=[
+                        (0, "crack", "Crack"),
+                    ],
+                ),
+            )
+
+            ds = builder.first_gen_dataset(label_schema=root.label_schema)
+
+            task = training_service.create_task(
+                session,
+                parent_model_node_id=root.model_node.id,
+                dataset_snapshot_id=ds.snapshot.id,
+                task_type="object_detection",
+                model_family="yolo",
+                training_config_json={},
+                resource_config_json={},
+                evaluation_policy_json={},
+            )
+            session.commit()
+
+            attempt = training_service.start_attempt(session, task.id)
+            session.commit()
+
+            training_service.complete_attempt(
+                session,
+                attempt.id,
+                artifact_path="/data/models/test.pt",
+                artifact_hash="sha256:test",
+            )
+            session.commit()
+
+            session.refresh(task)
+            assert task.status == "completed"
+
+            result = run_training(str(task.id))
+            assert "already completed" in result
+
+        finally:
+            reset_worker_session_factory()

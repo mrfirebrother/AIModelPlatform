@@ -154,7 +154,7 @@ class TestFullTrainingTaskFlow:
 
 
 class TestRetryOnFailure:
-    def test_failed_attempt_allows_new_attempt(self, session: Session) -> None:
+    def test_failed_attempt_is_terminal(self, session: Session) -> None:
         snapshot = _make_snapshot(session)
         task = create_task(
             session,
@@ -171,20 +171,12 @@ class TestRetryOnFailure:
         session.commit()
         fail_attempt(session, a1.id, "OOM")
         session.commit()
-        a2 = start_attempt(session, task.id)
-        session.commit()
-        assert a2.attempt_no == 2
-        assert a2.retry_count == 1
-        model = complete_attempt(
-            session,
-            a2.id,
-            artifact_path=f"models/{uuid4()}.pt",
-            artifact_hash=f"sha256:{uuid4().hex}",
-        )
-        session.commit()
+
         session.refresh(task)
-        assert task.status == "completed"
-        assert model.training_attempt_id == a2.id
+        assert task.status == "failed"
+
+        with pytest.raises(ValueError, match="Cannot start attempt"):
+            start_attempt(session, task.id)
 
 
 class TestCancelDuringTraining:
@@ -381,3 +373,78 @@ class TestCheckpointRecording:
         cp.parent_artifact_hash = "sha256:changed"
         with pytest.raises(ValueError, match="immutable"):
             session.commit()
+
+
+class TestWorkerLifecycle:
+    def test_queued_task_transitions_to_running(self, session: Session) -> None:
+        snapshot = _make_snapshot(session)
+        task = create_task(
+            session,
+            parent_model_node_id=None,
+            dataset_snapshot_id=snapshot.id,
+            task_type="object_detection",
+            model_family="yolo",
+            training_config_json={},
+            resource_config_json={},
+            evaluation_policy_json={},
+        )
+        session.commit()
+        assert task.status == "queued"
+
+        attempt = start_attempt(session, task.id)
+        session.commit()
+        session.refresh(task)
+        assert task.status == "running"
+        assert attempt.status == "running"
+
+    def test_terminal_task_no_new_attempt(self, session: Session) -> None:
+        snapshot = _make_snapshot(session)
+        task = create_task(
+            session,
+            parent_model_node_id=None,
+            dataset_snapshot_id=snapshot.id,
+            task_type="object_detection",
+            model_family="yolo",
+            training_config_json={},
+            resource_config_json={},
+            evaluation_policy_json={},
+        )
+        session.commit()
+        attempt = start_attempt(session, task.id)
+        session.commit()
+        complete_attempt(
+            session,
+            attempt.id,
+            artifact_path=f"models/{uuid4()}.pt",
+            artifact_hash=f"sha256:{uuid4().hex}",
+        )
+        session.commit()
+
+        session.refresh(task)
+        assert task.status == "completed"
+        with pytest.raises(ValueError, match="Cannot start attempt"):
+            start_attempt(session, task.id)
+
+    def test_failed_attempt_no_retry(self, session: Session) -> None:
+        snapshot = _make_snapshot(session)
+        task = create_task(
+            session,
+            parent_model_node_id=None,
+            dataset_snapshot_id=snapshot.id,
+            task_type="object_detection",
+            model_family="yolo",
+            training_config_json={},
+            resource_config_json={},
+            evaluation_policy_json={},
+        )
+        session.commit()
+        a1 = start_attempt(session, task.id)
+        session.commit()
+        fail_attempt(session, a1.id, "OOM")
+        session.commit()
+
+        session.refresh(task)
+        assert task.status == "failed"
+
+        with pytest.raises(ValueError, match="Cannot start attempt"):
+            start_attempt(session, task.id)

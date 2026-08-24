@@ -61,6 +61,42 @@ async def test_create_training_task(app, session, headers, dataset_snapshot, mon
 
 
 @pytest.mark.anyio
+async def test_dispatch_failure_marks_task_failed(app, session, headers, dataset_snapshot, monkeypatch):
+    from backend.app.workers.train_worker import run_training
+    from backend.app.models import TrainingTask
+    from uuid import UUID
+
+    def failing_delay(task_id):
+        raise RuntimeError("Broker unavailable")
+
+    monkeypatch.setattr(run_training, "delay", failing_delay)
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.post(
+            "/api/training/tasks",
+            json={
+                "dataset_snapshot_id": str(dataset_snapshot.id),
+                "task_type": "object_detection",
+                "model_family": "yolo",
+                "training_config_json": {},
+                "resource_config_json": {},
+                "evaluation_policy_json": {},
+            },
+            headers=headers,
+        )
+    assert response.status_code == 201
+    body = response.json()
+    task_id = UUID(body["id"])
+
+    task = session.get(TrainingTask, task_id)
+    assert task is not None
+    assert task.status == "failed"
+    assert "Broker unavailable" in (task.failure_reason or "")
+
+
+@pytest.mark.anyio
 async def test_list_training_tasks(app, session, headers, dataset_snapshot):
     task = TrainingTask(
         dataset_snapshot_id=dataset_snapshot.id,

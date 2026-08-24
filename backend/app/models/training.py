@@ -6,6 +6,7 @@ from uuid import UUID
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -19,6 +20,7 @@ from sqlalchemy import (
     text,
     func,
 )
+import sqlalchemy as sa
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base, UUIDPrimaryKeyMixin, install_immutable_guard, json_column
@@ -48,6 +50,9 @@ class TrainingTask(UUIDPrimaryKeyMixin, Base):
     resource_config_json: Mapped[dict[str, Any]] = json_column()
     evaluation_policy_json: Mapped[dict[str, Any]] = json_column()
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="queued")
+    cancellation_requested: Mapped[bool] = mapped_column(
+        sa.Boolean, nullable=False, default=False, server_default=sa.text("0")
+    )
     created_by: Mapped[str | None] = mapped_column(String(255))
     failure_reason: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(

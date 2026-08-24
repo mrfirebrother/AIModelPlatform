@@ -1,5 +1,6 @@
 ﻿from __future__ import annotations
 
+import hashlib
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
@@ -74,7 +75,7 @@ def start_attempt(session: Session, task_id: UUID) -> TrainingAttempt:
     task = session.get(TrainingTask, task_id, with_for_update=True)
     if task is None:
         raise ValueError(f"Training task {task_id} not found")
-    if task.status not in ("queued", "running", "recovering", "failed"):
+    if task.status not in ("queued", "running", "recovering"):
         raise ValueError(f"Cannot start attempt for task in '{task.status}' status")
 
     active = session.scalar(
@@ -115,7 +116,7 @@ def start_attempt(session: Session, task_id: UUID) -> TrainingAttempt:
     )
     session.add(attempt)
 
-    if task.status in ("queued", "failed", "recovering"):
+    if task.status in ("queued", "recovering"):
         task.status = "running"
 
     session.flush()
@@ -131,6 +132,7 @@ def complete_attempt(
     framework: str = "pytorch",
     artifact_format: str = "pt",
     metadata_json: dict | None = None,
+    checkpoint_info: dict | None = None,
 ) -> ModelNode:
     attempt = session.get(TrainingAttempt, attempt_id, with_for_update=True)
     if attempt is None:
@@ -138,10 +140,41 @@ def complete_attempt(
     if attempt.status not in ("pending", "running", "recovering"):
         raise ValueError(f"Cannot complete attempt in '{attempt.status}' status")
 
+    task = session.get(TrainingTask, attempt.task_id, with_for_update=True)
+    if task is None:
+        raise ValueError(f"Training task {attempt.task_id} not found")
+
+    if checkpoint_info:
+        from backend.app.models.training import Checkpoint
+
+        parent_artifact_hash = "sha256:none"
+        if task.parent_model_node_id is not None:
+            parent_model = session.get(ModelNode, task.parent_model_node_id)
+            if parent_model is not None:
+                parent_artifact_hash = parent_model.artifact_hash
+
+        training_config_hash = f"sha256:{hashlib.sha256(str(task.training_config_json).encode()).hexdigest()}"
+
+        checkpoint = Checkpoint(
+            attempt=attempt,
+            dataset_snapshot=task.dataset_snapshot,
+            parent_artifact_hash=parent_artifact_hash,
+            training_config_hash=training_config_hash,
+            epoch=checkpoint_info.get("epoch", 0),
+            artifact_path=artifact_path,
+            artifact_hash=artifact_hash,
+            metrics_json=checkpoint_info.get("metrics", {}),
+        )
+        session.add(checkpoint)
+        session.flush()
+
+        attempt.latest_checkpoint_id = checkpoint.id
+        if checkpoint_info.get("is_best", False):
+            attempt.best_checkpoint_id = checkpoint.id
+
     attempt.status = "completed"
     attempt.finished_at = datetime.now(timezone.utc)
 
-    task = session.get(TrainingTask, attempt.task_id, with_for_update=True)
     task.status = "completed"
 
     model = ModelNode(
