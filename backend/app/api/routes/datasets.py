@@ -292,6 +292,12 @@ def delete_dataset(
     if dataset is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset not found")
     try:
+        # Delete snapshots first (foreign key constraint)
+        snapshots = db.execute(select(DatasetSnapshot).where(DatasetSnapshot.dataset_id == dataset_id)).scalars().all()
+        for snapshot in snapshots:
+            db.delete(snapshot)
+        db.flush()
+
         log_operation(
             db,
             operation_type="dataset.delete",
