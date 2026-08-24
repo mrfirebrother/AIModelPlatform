@@ -266,8 +266,8 @@ def validate_yolo_dataset(dataset_dir: Path) -> DatasetValidationResult:
             for f in files:
                 splits_involved.add(f.split("/")[0])
             if len(splits_involved) > 1:
-                result.errors.append(
-                    DatasetValidationError(
+                result.warnings.append(
+                    DatasetValidationWarning(
                         code="duplicate_hash_across_splits",
                         message=f"Duplicate file hash across splits: {', '.join(files)}",
                         details={"hash": img_hash, "files": files},
