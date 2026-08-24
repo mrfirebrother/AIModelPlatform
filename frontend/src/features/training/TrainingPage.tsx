@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { createApi } from "../../lib/createApi";
+import { useToast } from "../../lib/toast";
 import type { TrainingTask, TrainingLogs, TrainingMetrics, TrainingCheckpoint } from "../../lib/api";
 
 const STATUS_LABEL: Record<string, string> = {
@@ -20,6 +21,7 @@ const STATUS_BADGE: Record<string, string> = {
 
 export default function TrainingPage() {
   const api = useMemo(() => createApi(), []);
+  const toast = useToast();
   const navigate = useNavigate();
   const [tasks, setTasks] = useState<TrainingTask[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
