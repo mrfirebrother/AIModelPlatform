@@ -1,12 +1,15 @@
 ﻿from __future__ import annotations
 
+import hashlib
 import logging
+import threading
 from pathlib import Path
 from typing import Any
 from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from backend.app.config import get_settings
 from backend.app.models import TrainingAttempt, TrainingTask
 from backend.app.training.checkpoint_manager import CheckpointManager
 from backend.app.training.resource_scheduler import (
@@ -21,6 +24,8 @@ from backend.app.workers.attempt_lease import heartbeat as attempt_heartbeat
 from .celery_app import celery_app
 
 logger = logging.getLogger(__name__)
+
+HEARTBEAT_INTERVAL_SECONDS = 60
 
 
 def _resolve_dataset_snapshot(
@@ -104,7 +109,8 @@ def run_training(task_id: str) -> str:
             logger.error("Failed to start attempt for task %s: %s", task_id, exc)
             return f"failed to start attempt: {exc}"
 
-        output_dir = Path(f"/data/checkpoints/{task_id}/attempt_{attempt.attempt_no}")
+        settings = get_settings()
+        output_dir = Path(settings.checkpoint_dir) / task_id / f"attempt_{attempt.attempt_no}"
         output_dir.mkdir(parents=True, exist_ok=True)
 
         training_config = task.training_config_json or {}
@@ -127,6 +133,11 @@ def run_training(task_id: str) -> str:
             session.commit()
             return f"dataset snapshot not found for task {task_id}"
 
+        if dataset_snapshot.manifest_hash is None:
+            fail_attempt(session, attempt.id, error="Dataset snapshot manifest hash missing")
+            session.commit()
+            return f"dataset snapshot manifest hash missing for task {task_id}"
+
         label_schema = dataset_snapshot.label_schema
         nc = len(label_schema.classes) if label_schema else 0
         names = [c.semantic_key for c in label_schema.classes] if label_schema else []
@@ -138,6 +149,9 @@ def run_training(task_id: str) -> str:
             "nc": nc,
             "names": names,
         }
+
+        attempt.gpu_device = training_config.get("device")
+        session.flush()
 
         try:
             result = execute_training(
@@ -152,10 +166,16 @@ def run_training(task_id: str) -> str:
             )
 
             session.refresh(attempt)
+            session.refresh(task)
+
+            if task.cancellation_requested:
+                logger.info("Task %s was cancelled during training, failing attempt", task_id)
+                fail_attempt(session, attempt.id, error="Cancelled during training")
+                session.commit()
+                return f"task {task_id} cancelled during training"
 
             if result.success:
                 if result.best_model_path and Path(result.best_model_path).exists():
-                    import hashlib
                     with open(result.best_model_path, "rb") as f:
                         artifact_hash = f"sha256:{hashlib.sha256(f.read()).hexdigest()}"
 
@@ -165,6 +185,12 @@ def run_training(task_id: str) -> str:
                         "metrics": result.metrics,
                     }
 
+                    label_schema_id = (
+                        dataset_snapshot.label_schema_id
+                        if dataset_snapshot is not None
+                        else None
+                    )
+
                     model = complete_attempt(
                         session,
                         attempt.id,
@@ -172,6 +198,7 @@ def run_training(task_id: str) -> str:
                         artifact_hash=artifact_hash,
                         metadata_json={"metrics": result.metrics, "epochs": result.epochs_completed},
                         checkpoint_info=checkpoint_info,
+                        label_schema_id=label_schema_id,
                     )
                     session.commit()
                     logger.info("Task %s completed, candidate model %s created", task_id, model.id)
@@ -207,6 +234,7 @@ def execute_training(
     output_dir: Path,
     parent_model_path: str | None = None,
     required_memory_mb: int = 4096,
+    heartbeat_interval: int = HEARTBEAT_INTERVAL_SECONDS,
 ) -> TrainResult:
     """Run YOLO training synchronously with GPU lease management.
 
@@ -222,6 +250,7 @@ def execute_training(
     cpu_mode = device == "cpu"
     scheduler = ResourceScheduler(session=session, cpu_mode=cpu_mode)
     lease = None
+    heartbeat_thread: _HeartbeatThread | None = None
 
     try:
         if device != "cpu":
@@ -244,6 +273,14 @@ def execute_training(
             session.flush()
         except Exception:
             logger.warning("Heartbeat failed for attempt %s", attempt.id)
+
+        heartbeat_thread = _HeartbeatThread(
+            session=session,
+            attempt_id=attempt.id,
+            lease_token=attempt.lease_token,
+            interval=heartbeat_interval,
+        )
+        heartbeat_thread.start()
 
         trainer = YoloTrainer(training_config)
         result = trainer.train(
@@ -271,8 +308,45 @@ def execute_training(
         )
 
     finally:
+        if heartbeat_thread is not None:
+            heartbeat_thread.stop()
+            heartbeat_thread.join(timeout=5)
         if lease is not None:
             scheduler.release_gpu(attempt.id)
+
+
+class _HeartbeatThread(threading.Thread):
+    """Daemon thread that sends periodic heartbeats for a training attempt."""
+
+    def __init__(
+        self,
+        session: Session,
+        attempt_id: UUID,
+        lease_token: UUID | None,
+        interval: int = HEARTBEAT_INTERVAL_SECONDS,
+    ) -> None:
+        super().__init__(daemon=True)
+        self._session = session
+        self._attempt_id = attempt_id
+        self._lease_token = lease_token
+        self._interval = interval
+        self._stop_event = threading.Event()
+
+    def stop(self) -> None:
+        self._stop_event.set()
+
+    def run(self) -> None:
+        while not self._stop_event.is_set():
+            self._stop_event.wait(self._interval)
+            if self._stop_event.is_set():
+                break
+            try:
+                attempt_heartbeat(self._session, self._attempt_id, self._lease_token)
+                self._session.flush()
+            except Exception:
+                logger.warning(
+                    "Heartbeat failed for attempt %s", self._attempt_id
+                )
 
 
 @celery_app.task(name="platform.training.recover_attempt")

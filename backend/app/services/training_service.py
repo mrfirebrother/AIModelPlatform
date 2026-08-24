@@ -133,6 +133,7 @@ def complete_attempt(
     artifact_format: str = "pt",
     metadata_json: dict | None = None,
     checkpoint_info: dict | None = None,
+    label_schema_id: UUID | None = None,
 ) -> ModelNode:
     attempt = session.get(TrainingAttempt, attempt_id, with_for_update=True)
     if attempt is None:
@@ -181,6 +182,7 @@ def complete_attempt(
         parent_id=task.parent_model_node_id,
         dataset_snapshot_id=task.dataset_snapshot_id,
         training_attempt_id=attempt.id,
+        label_schema_id=label_schema_id,
         task_type=task.task_type,
         model_family=task.model_family,
         artifact_path=artifact_path,

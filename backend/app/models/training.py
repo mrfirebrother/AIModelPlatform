@@ -51,7 +51,7 @@ class TrainingTask(UUIDPrimaryKeyMixin, Base):
     evaluation_policy_json: Mapped[dict[str, Any]] = json_column()
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="queued")
     cancellation_requested: Mapped[bool] = mapped_column(
-        sa.Boolean, nullable=False, default=False, server_default=sa.text("0")
+        sa.Boolean, nullable=False, default=False, server_default=sa.text("false")
     )
     created_by: Mapped[str | None] = mapped_column(String(255))
     failure_reason: Mapped[str | None] = mapped_column(Text)
