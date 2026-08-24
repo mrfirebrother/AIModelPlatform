@@ -127,6 +127,32 @@ class TestSnapshotManifest:
 
 
 class TestCreateDatasetSnapshot:
+    def test_snapshot_reads_train_images_layout(self, tmp_path: Path) -> None:
+        source = tmp_path / "source"
+        source.mkdir()
+        (source / "data.yaml").write_text(
+            "nc: 1\nnames: ['corrosion']\n"
+            "train: train/images\nval: valid/images\ntest: test/images\n",
+            encoding="utf-8",
+        )
+        for split in ["train", "valid", "test"]:
+            (source / split / "images").mkdir(parents=True)
+            (source / split / "labels").mkdir(parents=True)
+            _create_valid_image(source / split / "images" / "sample.jpg")
+            _create_valid_label(source / split / "labels" / "sample.txt")
+
+        result = create_dataset_snapshot(
+            source_dir=source,
+            store_root=tmp_path / "cas",
+            snapshot_root=tmp_path / "snapshots",
+            label_schema_id=uuid4(),
+            dataset_id=uuid4(),
+        )
+
+        assert len(result.manifest.train_files) == 1
+        assert len(result.manifest.val_files) == 1
+        assert len(result.manifest.test_files) == 1
+
     def test_snapshot_generates_read_only_files(self, tmp_path: Path) -> None:
         source = tmp_path / "source"
         source.mkdir()
@@ -260,6 +286,28 @@ class TestCreateDatasetSnapshot:
 
         manifest_data = json.loads(result.manifest_path.read_text(encoding="utf-8"))
         assert manifest_data["train_negative"] == 3
+
+    def test_orphan_labels_are_not_counted_as_images(self, tmp_path: Path) -> None:
+        source = tmp_path / "source"
+        source.mkdir()
+        _create_minimal_data_yaml(source / "data.yaml")
+        for split in ["train", "val", "test"]:
+            (source / "images" / split).mkdir(parents=True)
+            (source / "labels" / split).mkdir(parents=True)
+            _create_valid_image(source / "images" / split / "sample.jpg")
+            _create_valid_label(source / "labels" / split / "sample.txt")
+        _create_valid_label(source / "labels" / "train" / "orphan.txt")
+
+        result = create_dataset_snapshot(
+            source_dir=source,
+            store_root=tmp_path / "cas",
+            snapshot_root=tmp_path / "snapshots",
+            label_schema_id=uuid4(),
+            dataset_id=uuid4(),
+        )
+
+        assert result.manifest.train_positive == 1
+        assert result.manifest.train_negative == 0
 
     def test_snapshot_with_validation_error_raises(self, tmp_path: Path) -> None:
         source = tmp_path / "source"

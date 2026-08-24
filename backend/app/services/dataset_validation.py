@@ -72,8 +72,44 @@ def _parse_data_yaml(path: Path) -> dict[str, Any]:
             names_str = value.strip("[]")
             result["names"] = [n.strip().strip("'\"") for n in names_str.split(",")]
         elif key in ("train", "val", "test"):
-            result[key] = value
+            result[key] = value.strip("'\"")
     return result
+
+
+def _split_image_paths(data_yaml: dict[str, Any]) -> dict[str, str]:
+    return {
+        "train": data_yaml.get("train", "images/train"),
+        "val": data_yaml.get("val", "images/val"),
+        "test": data_yaml.get("test", "images/test"),
+    }
+
+
+def get_yolo_split_paths(dataset_dir: Path) -> dict[str, Path]:
+    """Return the image directory for each split defined by data.yaml."""
+    dataset_root = dataset_dir.resolve()
+    data_yaml = _parse_data_yaml(dataset_dir / "data.yaml")
+    paths = {}
+    for split, relative_path in _split_image_paths(data_yaml).items():
+        path = (dataset_dir / relative_path).resolve()
+        if not path.is_relative_to(dataset_root):
+            raise ValueError(
+                f"Dataset split path escapes dataset root: {split}={relative_path}"
+            )
+        label_path = _label_dir_for_images_dir(path).resolve()
+        if not label_path.is_relative_to(dataset_root):
+            raise ValueError(
+                f"Dataset label path escapes dataset root: {split}={label_path}"
+            )
+        paths[split] = path
+    return paths
+
+
+def _label_dir_for_images_dir(img_dir: Path) -> Path:
+    if img_dir.name == "images":
+        return img_dir.parent / "labels"
+    if img_dir.parent.name == "images":
+        return img_dir.parent.parent / "labels" / img_dir.name
+    return img_dir.parent / "labels"
 
 
 def _validate_label_format(label_path: Path) -> tuple[bool, list[int], bool]:
@@ -122,15 +158,16 @@ def validate_yolo_dataset(dataset_dir: Path) -> DatasetValidationResult:
     required_splits = ["train", "val"]
 
     # Read split paths from data.yaml
-    train_path = data_yaml.get("train", "images/train") if data_yaml else "images/train"
-    val_path = data_yaml.get("val", "images/val") if data_yaml else "images/val"
-    test_path = data_yaml.get("test", "images/test") if data_yaml else "images/test"
-
-    split_img_paths = {"train": train_path, "val": val_path, "test": test_path}
+    try:
+        split_img_paths = get_yolo_split_paths(dataset_dir)
+    except ValueError as exc:
+        result.errors.append(
+            DatasetValidationError(code="invalid_split_path", message=str(exc))
+        )
+        return result
 
     for split in required_splits:
-        img_rel = split_img_paths[split]
-        img_dir = dataset_dir / img_rel
+        img_dir = split_img_paths[split]
         if not img_dir.exists():
             result.errors.append(
                 DatasetValidationError(
@@ -139,7 +176,7 @@ def validate_yolo_dataset(dataset_dir: Path) -> DatasetValidationResult:
                 )
             )
 
-    has_test = (dataset_dir / split_img_paths["test"]).exists()
+    has_test = split_img_paths["test"].exists()
     if not has_test:
         result.warnings.append(
             DatasetValidationWarning(code="missing_test_split", message="No test split found")
@@ -149,9 +186,9 @@ def validate_yolo_dataset(dataset_dir: Path) -> DatasetValidationResult:
     all_class_ids: set[int] = set()
 
     for split in splits:
-        img_dir = dataset_dir / split_img_paths[split]
+        img_dir = split_img_paths[split]
         # Derive label dir from image dir
-        lbl_dir = img_dir.parent / "labels" / img_dir.name if img_dir.parent.name == "images" else img_dir.parent.parent / "labels" / img_dir.name
+        lbl_dir = _label_dir_for_images_dir(img_dir)
         if not img_dir.exists():
             continue
 
@@ -223,9 +260,8 @@ def validate_yolo_dataset(dataset_dir: Path) -> DatasetValidationResult:
             result.test_count = len(split_images)
 
     for lbl_dir_split in splits:
-        img_rel = split_img_paths[lbl_dir_split]
-        img_dir = dataset_dir / img_rel
-        lbl_dir = img_dir.parent / "labels" / img_dir.name if img_dir.parent.name == "images" else img_dir.parent.parent / "labels" / img_dir.name
+        img_dir = split_img_paths[lbl_dir_split]
+        lbl_dir = _label_dir_for_images_dir(img_dir)
         if not lbl_dir.exists():
             continue
         for lbl_file in sorted(lbl_dir.iterdir()):
@@ -244,14 +280,13 @@ def validate_yolo_dataset(dataset_dir: Path) -> DatasetValidationResult:
                 )
 
     for img_dir_split in splits:
-        img_rel = split_img_paths[img_dir_split]
-        img_dir = dataset_dir / img_rel
+        img_dir = split_img_paths[img_dir_split]
         if not img_dir.exists():
             continue
         for img_file in sorted(img_dir.iterdir()):
             if img_file.suffix.lower() not in IMAGE_EXTENSIONS:
                 continue
-            label_file = img_dir.parent / "labels" / img_dir.name / (img_file.stem + ".txt")
+            label_file = _label_dir_for_images_dir(img_dir) / (img_file.stem + ".txt")
             if not label_file.exists():
                 result.warnings.append(
                     DatasetValidationWarning(
@@ -281,7 +316,7 @@ def validate_yolo_dataset(dataset_dir: Path) -> DatasetValidationResult:
         num_classes = data_yaml["nc"]
         train_val_class_counts: dict[int, int] = {i: 0 for i in range(num_classes)}
         for split in ["train", "val"]:
-            lbl_dir = dataset_dir / "labels" / split
+            lbl_dir = _label_dir_for_images_dir(split_img_paths[split])
             if not lbl_dir.exists():
                 continue
             for lbl_file in lbl_dir.iterdir():

@@ -1,7 +1,0 @@
-names:
-- crack
-- spalling
-nc: 2
-path: F:\Work\EStructure\AIModelPlatform\backend\tests\fixtures\real_yolo_dataset
-train: F:/Work/EStructure/AIModelPlatform/backend/tests/fixtures/real_yolo_dataset/images/train
-val: F:/Work/EStructure/AIModelPlatform/backend/tests/fixtures/real_yolo_dataset/images/val

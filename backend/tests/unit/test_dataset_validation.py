@@ -237,7 +237,7 @@ class TestValidateYoloDataset:
         assert result.is_valid
         assert any(w.code == "missing_test_split" for w in result.warnings)
 
-    def test_duplicate_hash_across_splits_fails(self, tmp_path: Path) -> None:
+    def test_duplicate_hash_across_splits_warns(self, tmp_path: Path) -> None:
         root = tmp_path / "dataset"
         root.mkdir()
         _create_minimal_data_yaml(root / "data.yaml")
@@ -252,8 +252,8 @@ class TestValidateYoloDataset:
                 _create_valid_label(root / "labels" / split / f"img_{i:04d}.txt")
 
         result = validate_yolo_dataset(root)
-        assert not result.is_valid
-        assert any(e.code == "duplicate_hash_across_splits" for e in result.errors)
+        assert result.is_valid
+        assert any(w.code == "duplicate_hash_across_splits" for w in result.warnings)
 
     def test_same_hash_in_same_split_is_ok(self, tmp_path: Path) -> None:
         root = tmp_path / "dataset"
@@ -324,6 +324,22 @@ class TestValidateYoloDataset:
         result = validate_yolo_dataset(root)
         assert not result.is_valid
         assert any(e.code == "data_yaml_error" for e in result.errors)
+
+    def test_split_path_cannot_escape_dataset_root(self, tmp_path: Path) -> None:
+        root = tmp_path / "dataset"
+        root.mkdir()
+        (root / "data.yaml").write_text(
+            "nc: 1\nnames: ['fire']\n"
+            "train: ../outside/train\nval: images/val\n",
+            encoding="utf-8",
+        )
+        (root / "images" / "val").mkdir(parents=True)
+        (root / "labels" / "val").mkdir(parents=True)
+
+        result = validate_yolo_dataset(root)
+
+        assert not result.is_valid
+        assert any(e.code == "invalid_split_path" for e in result.errors)
 
     def test_unlabeled_image_not_counted_as_negative(self, tmp_path: Path) -> None:
         root = tmp_path / "dataset"

@@ -8,6 +8,8 @@ from uuid import UUID, uuid4
 
 from backend.app.services.dataset_validation import (
     DatasetValidationResult,
+    _label_dir_for_images_dir,
+    get_yolo_split_paths,
     validate_yolo_dataset,
 )
 from .artifacts import ContentAddressedStore, compute_file_hash
@@ -73,13 +75,18 @@ def _build_file_entry(
     }
 
 
-def _count_positive_negative(labels_dir: Path) -> tuple[int, int]:
+def _count_positive_negative(labels_dir: Path, images_dir: Path) -> tuple[int, int]:
     positive = 0
     negative = 0
     if not labels_dir.exists():
         return positive, negative
     for label_file in labels_dir.iterdir():
         if label_file.suffix != ".txt":
+            continue
+        if not any(
+            (images_dir / f"{label_file.stem}{extension}").exists()
+            for extension in IMAGE_EXTENSIONS
+        ):
             continue
         content = label_file.read_text(encoding="utf-8").strip()
         if not content:
@@ -109,14 +116,15 @@ def create_dataset_snapshot(
         "val": {"positive": 0, "negative": 0},
         "test": {"positive": 0, "negative": 0},
     }
+    split_image_dirs = get_yolo_split_paths(source_dir)
 
     for split in ["train", "val", "test"]:
-        img_dir = source_dir / "images" / split
-        lbl_dir = source_dir / "labels" / split
+        img_dir = split_image_dirs[split]
+        lbl_dir = _label_dir_for_images_dir(img_dir)
         if not img_dir.exists():
             continue
 
-        positive, negative = _count_positive_negative(lbl_dir)
+        positive, negative = _count_positive_negative(lbl_dir, img_dir)
         split_counts[split]["positive"] = positive
         split_counts[split]["negative"] = negative
 

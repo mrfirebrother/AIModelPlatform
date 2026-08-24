@@ -2,6 +2,7 @@
 
 import hashlib
 import secrets
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -9,7 +10,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from backend.app.api.dependencies import get_effective_settings, get_db, verify_api_key
 from backend.app.models import Dataset, DatasetSnapshot, LabelSchema, LabelSchemaClass
@@ -37,8 +38,25 @@ class DatasetResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class DatasetListItemResponse(BaseModel):
+    id: UUID
+    name: str
+    description: str | None
+    label_schema_name: str | None = None
+    image_count: int = 0
+    train_count: int = 0
+    val_count: int = 0
+    test_count: int = 0
+    latest_snapshot_id: UUID | None = None
+    source: str | None = None
+    source_path: str | None = None
+    validation_status: str = "-"
+    warnings: list[str] = Field(default_factory=list)
+    created_at: datetime | None = None
+
+
 class DatasetListResponse(BaseModel):
-    datasets: list[DatasetResponse]
+    datasets: list[DatasetListItemResponse]
     total: int
 
 
@@ -59,6 +77,14 @@ class SnapshotResponse(BaseModel):
     test_positive_count: int
     source_path: str | None
     model_config = {"from_attributes": True}
+
+
+def _normalise_class_names(names: Any) -> list[tuple[int, str]]:
+    if isinstance(names, list):
+        return [(class_id, str(name)) for class_id, name in enumerate(names)]
+    if isinstance(names, dict):
+        return [(int(class_id), str(name)) for class_id, name in names.items()]
+    return []
 
 
 @router.post("", response_model=DatasetResponse, status_code=status.HTTP_201_CREATED)
@@ -114,30 +140,42 @@ def create_dataset(
                         import yaml
                         with open(data_yaml_path) as f:
                             data_yaml = yaml.safe_load(f) or {}
-                    names = data_yaml.get("names", {})
+                    names = _normalise_class_names(data_yaml.get("names", {}))
                     schema = LabelSchema(name=f"{name}_schema")
                     db.add(schema)
                     db.flush()
-                    for cid, cname in names.items():
-                        db.add(LabelSchemaClass(schema_id=schema.id, class_id=int(cid), semantic_key=cname, display_name=cname))
+                    for cid, cname in names:
+                        db.add(LabelSchemaClass(schema_id=schema.id, class_id=cid, semantic_key=cname, display_name=cname))
                     db.flush()
 
-                    # Create snapshot
+                    from backend.app.storage.snapshots import create_dataset_snapshot
+
+                    snapshot_result = create_dataset_snapshot(
+                        source_dir=source_dir,
+                        store_root=Path(settings.dataset_dir) / "store",
+                        snapshot_root=Path(settings.dataset_dir) / "snapshots",
+                        label_schema_id=schema.id,
+                        dataset_id=dataset.id,
+                    )
                     snapshot = DatasetSnapshot(
                         dataset_id=dataset.id,
                         label_schema_id=schema.id,
-                        manifest_path=str(source_dir / "data.yaml"),
-                        manifest_hash="sha256:imported",
-                        train_manifest_json=[],
-                        val_manifest_json=[],
-                        test_manifest_json=[],
+                        manifest_path=str(snapshot_result.manifest_path),
+                        manifest_hash=snapshot_result.manifest_hash,
+                        train_manifest_json=snapshot_result.manifest.train_files,
+                        val_manifest_json=snapshot_result.manifest.val_files,
+                        test_manifest_json=snapshot_result.manifest.test_files,
                         source_path=str(source_dir),
-                        train_positive_count=validation.train_count,
-                        val_positive_count=validation.val_count,
-                        test_positive_count=validation.test_count,
-                        train_negative_count=validation.negative_count,
-                        val_negative_count=0,
-                        test_negative_count=0,
+                        train_positive_count=snapshot_result.manifest.train_positive,
+                        val_positive_count=snapshot_result.manifest.val_positive,
+                        test_positive_count=snapshot_result.manifest.test_positive,
+                        train_negative_count=snapshot_result.manifest.train_negative,
+                        val_negative_count=snapshot_result.manifest.val_negative,
+                        test_negative_count=snapshot_result.manifest.test_negative,
+                        quality_json={
+                            "valid": True,
+                            "warnings": [w.message for w in validation.warnings],
+                        },
                     )
                     db.add(snapshot)
                     db.flush()
@@ -166,9 +204,68 @@ def list_datasets(
     db: Session = Depends(get_db),
     _key: str = Depends(verify_api_key),
 ) -> Any:
-    datasets = list(db.execute(select(Dataset)).scalars().all())
+    datasets = list(
+        db.execute(
+            select(Dataset).options(
+                selectinload(Dataset.snapshots).selectinload(DatasetSnapshot.label_schema)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    items: list[DatasetListItemResponse] = []
+    for dataset in datasets:
+        snapshot = max(
+            dataset.snapshots,
+            key=lambda value: value.created_at or datetime.min,
+            default=None,
+        )
+
+        train_count = val_count = test_count = 0
+        label_schema_name = None
+        latest_snapshot_id = None
+        validation_status = "-"
+        warnings: list[str] = []
+        if snapshot is not None:
+            train_manifest = snapshot.train_manifest_json or []
+            val_manifest = snapshot.val_manifest_json or []
+            test_manifest = snapshot.test_manifest_json or []
+            train_count = len(train_manifest) or (
+                snapshot.train_positive_count + snapshot.train_negative_count
+            )
+            val_count = len(val_manifest) or (
+                snapshot.val_positive_count + snapshot.val_negative_count
+            )
+            test_count = len(test_manifest) or (
+                snapshot.test_positive_count + snapshot.test_negative_count
+            )
+            label_schema_name = snapshot.label_schema.name if snapshot.label_schema else None
+            latest_snapshot_id = snapshot.id
+            quality = snapshot.quality_json or {}
+            warnings = quality.get("warnings", [])
+            if snapshot.manifest_hash != "sha256:placeholder":
+                validation_status = "通过"
+
+        items.append(
+            DatasetListItemResponse(
+                id=dataset.id,
+                name=dataset.name,
+                description=dataset.description,
+                label_schema_name=label_schema_name,
+                image_count=train_count + val_count + test_count,
+                train_count=train_count,
+                val_count=val_count,
+                test_count=test_count,
+                latest_snapshot_id=latest_snapshot_id,
+                source=Path(dataset.source_path).name if dataset.source_path else None,
+                source_path=dataset.source_path,
+                validation_status=validation_status,
+                warnings=warnings,
+                created_at=dataset.created_at,
+            )
+        )
     return DatasetListResponse(
-        datasets=[DatasetResponse.model_validate(d) for d in datasets],
+        datasets=items,
         total=len(datasets),
     )
 
