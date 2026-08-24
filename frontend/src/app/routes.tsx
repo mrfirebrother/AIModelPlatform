@@ -110,7 +110,7 @@ export function AppRoutes() {
           <Route path="/bindings" element={<BindingsPage />} />
           <Route path="/datasets" element={<DatasetsPage />} />
           <Route path="/training" element={<TrainingPage />} />
-          <Route path="/training/new" element={<TrainingCreatePage />} />
+          <Route path="/training/create" element={<TrainingCreatePage />} />
           <Route path="/evaluations" element={<EvaluationsPage />} />
           <Route path="/releases" element={<ReleasesPage />} />
           <Route path="/resources" element={<ResourcesPage />} />
