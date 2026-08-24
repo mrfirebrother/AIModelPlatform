@@ -6,6 +6,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
+from backend.app.schemas import CAMEL_CONFIG
 from sqlalchemy.orm import Session
 
 from backend.app.api.dependencies import get_db, verify_api_key
@@ -21,6 +22,7 @@ router = APIRouter(prefix="/api/evaluations", tags=["evaluations"])
 
 
 class EvaluationCreate(BaseModel):
+    model_config = CAMEL_CONFIG
     model_node_id: UUID
     dataset_snapshot_id: UUID
     policy: dict[str, Any]

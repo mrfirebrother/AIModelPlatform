@@ -15,15 +15,30 @@ router = APIRouter(prefix="/api/training", tags=["training"])
 
 
 class TrainingTaskCreate(BaseModel):
+    model_config = CAMEL_CONFIG
     dataset_snapshot_id: UUID
+    datasetSnapshotId: UUID | None = None
     parent_model_node_id: UUID | None = None
+    parentModelNodeId: UUID | None = None
     task_type: str
     model_family: str
     training_config_json: dict = {}
+    trainingConfigJson: dict | None = None
     resource_config_json: dict = {}
     evaluation_policy_json: dict = {}
     created_by: str | None = None
     target_binding_id: UUID | None = None
+    targetBindingId: UUID | None = None
+    epochs: int | None = None
+
+    def get_snapshot_id(self) -> UUID:
+        return self.dataset_snapshot_id or self.datasetSnapshotId
+
+    def get_parent_id(self) -> UUID | None:
+        return self.parent_model_node_id or self.parentModelNodeId
+
+    def get_config(self) -> dict:
+        return self.training_config_json or self.trainingConfigJson or {}
 
 
 class TrainingTaskResponse(BaseModel):

@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from backend.app.api.dependencies import get_effective_settings, get_db, verify_api_key
 from backend.app.models import Dataset, DatasetSnapshot, LabelSchema, LabelSchemaClass
+from backend.app.schemas import CAMEL_CONFIG
 from backend.app.observability.operation_log import log_operation
 
 _MAX_DATASET_BYTES = 2 * 1024 * 1024 * 1024  # 2 GB
@@ -22,6 +23,7 @@ router = APIRouter(prefix="/api/datasets", tags=["datasets"])
 
 
 class DatasetCreate(BaseModel):
+    model_config = CAMEL_CONFIG
     name: str
     description: str | None = None
     source_path: str | None = None
@@ -61,6 +63,7 @@ class DatasetListResponse(BaseModel):
 
 
 class SnapshotCreate(BaseModel):
+    model_config = CAMEL_CONFIG
     dataset_id: UUID
     label_schema_id: UUID
     source_path: str | None = None
