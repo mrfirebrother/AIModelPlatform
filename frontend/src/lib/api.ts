@@ -252,6 +252,7 @@ export interface ApiClient {
   deleteDataset(id: string): Promise<void>;
   getTrainingTasks(): Promise<TrainingTask[]>;
   createTrainingTask(data: Partial<TrainingTask>): Promise<TrainingTask>;
+  deleteTrainingTask(id: string): Promise<void>;
   getTrainingLogs(taskId: string): Promise<TrainingLogs>;
   getTrainingMetrics(taskId: string): Promise<TrainingMetrics>;
   getTrainingCheckpoint(taskId: string): Promise<TrainingCheckpoint>;

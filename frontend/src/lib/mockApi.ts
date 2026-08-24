@@ -450,6 +450,12 @@ export const mockApi: ApiClient = {
     return task;
   },
 
+  async deleteTrainingTask(id: string) {
+    await delay(80);
+    const idx = trainingTasks.findIndex((t) => t.id === id);
+    if (idx !== -1) trainingTasks.splice(idx, 1);
+  },
+
   async getTrainingLogs(taskId: string): Promise<TrainingLogs> {
     await delay(60);
     const task = trainingTasks.find((t) => t.id === taskId);

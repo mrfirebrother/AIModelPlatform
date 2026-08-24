@@ -147,6 +147,37 @@ def get_training_task(
     return task
 
 
+@router.delete("/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_training_task(
+    task_id: UUID,
+    db: Session = Depends(get_db),
+    _key: str = Depends(verify_api_key),
+) -> None:
+    task = training_service.get_task(db, task_id)
+    if task is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+    if task.status == "running":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot delete running task")
+    try:
+        training_service.delete_task(db, task_id)
+        log_operation(
+            db,
+            operation_type="training.task.delete",
+            resource_type="training_task",
+            resource_id=task.id,
+            status="success",
+            summary_json={"task_id": str(task.id)},
+        )
+    except Exception as exc:
+        log_operation(
+            db,
+            operation_type="training.task.delete",
+            status="error",
+            error_summary=str(exc),
+        )
+        raise
+
+
 @router.post("/tasks/{task_id}/cancel", response_model=TrainingTaskResponse)
 def cancel_training_task(
     task_id: UUID,

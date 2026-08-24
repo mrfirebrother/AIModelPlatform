@@ -28,6 +28,19 @@ export default function TrainingPage() {
   const [checkpoint, setCheckpoint] = useState<TrainingCheckpoint | null>(null);
   const [tab, setTab] = useState<"logs" | "loss" | "checkpoint">("logs");
 
+  const handleDelete = async (id: string) => {
+    const confirmed = await toast.confirm("确定删除此训练任务？");
+    if (!confirmed) return;
+    try {
+      await api.deleteTrainingTask(id);
+      toast.success("训练任务已删除");
+      setTasks((prev) => prev.filter((t) => t.id !== id));
+      if (selectedId === id) setSelectedId(null);
+    } catch (err) {
+      toast.error("删除失败: " + (err as Error).message);
+    }
+  };
+
   useEffect(() => {
     api.getTrainingTasks().then(setTasks).catch(() => {});
   }, [api]);
@@ -61,7 +74,12 @@ export default function TrainingPage() {
             }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div style={{ fontWeight: 600, fontSize: 12 }}>{t.parentModelName || t.id}</div>
-                <span className={`badge ${STATUS_BADGE[t.status] || "badge-gray"}`} style={{ fontSize: 9 }}>{STATUS_LABEL[t.status] || t.status}</span>
+                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  <span className={`badge ${STATUS_BADGE[t.status] || "badge-gray"}`} style={{ fontSize: 9 }}>{STATUS_LABEL[t.status] || t.status}</span>
+                  {t.status !== "running" && (
+                    <button className="btn small danger" onClick={(e) => { e.stopPropagation(); handleDelete(t.id); }} style={{ padding: "2px 6px", fontSize: 9 }}>删除</button>
+                  )}
+                </div>
               </div>
               <div style={{ marginTop: 3, color: "var(--text-muted)", fontSize: 9, fontFamily: "Courier New, monospace" }}>
                 {t.datasetName || t.datasetSnapshotId} {"\u00b7"} {t.epochs} {"\u8f6e"}

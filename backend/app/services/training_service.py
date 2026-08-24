@@ -60,6 +60,16 @@ def list_tasks(session: Session) -> list[TrainingTask]:
     return list(session.execute(select(TrainingTask)).scalars().all())
 
 
+def delete_task(session: Session, task_id: UUID) -> None:
+    task = session.get(TrainingTask, task_id)
+    if task is None:
+        raise ValueError(f"Training task {task_id} not found")
+    if task.status == "running":
+        raise ValueError("Cannot delete running task")
+    session.delete(task)
+    session.flush()
+
+
 def start_attempt(session: Session, task_id: UUID) -> TrainingAttempt:
     task = session.get(TrainingTask, task_id, with_for_update=True)
     if task is None:
