@@ -54,24 +54,45 @@ class TrainingTaskResponse(BaseModel):
     evaluation_policy_json: dict
     status: str
     created_by: str | None
+    parent_model_name: str | None = None
+    dataset_name: str | None = None
+    epochs: int = 0
     model_config = {"from_attributes": True}
-
-    @property
-    def epochs(self) -> int:
-        return self.training_config_json.get("epochs", 0)
-
-    @property
-    def parent_model_name(self) -> str | None:
-        return None  # Would need to query DB
-
-    @property
-    def dataset_name(self) -> str | None:
-        return None  # Would need to query DB
-
 
 class TrainingTaskListResponse(BaseModel):
     tasks: list[TrainingTaskResponse]
     total: int
+
+
+def _to_training_task_response(task: Any) -> TrainingTaskResponse:
+    config = task.training_config_json or {}
+    raw_epochs = config.get("epochs", 0)
+    try:
+        epochs = int(raw_epochs)
+    except (TypeError, ValueError):
+        epochs = 0
+    return TrainingTaskResponse(
+        id=task.id,
+        parent_model_node_id=task.parent_model_node_id,
+        dataset_snapshot_id=task.dataset_snapshot_id,
+        target_binding_id=task.target_binding_id,
+        task_type=task.task_type,
+        model_family=task.model_family,
+        training_config_json=task.training_config_json or {},
+        resource_config_json=task.resource_config_json or {},
+        evaluation_policy_json=task.evaluation_policy_json or {},
+        status=task.status,
+        created_by=task.created_by,
+        parent_model_name=(
+            task.parent_model_node.name if task.parent_model_node is not None else None
+        ),
+        dataset_name=(
+            task.dataset_snapshot.dataset.name
+            if task.dataset_snapshot is not None and task.dataset_snapshot.dataset is not None
+            else None
+        ),
+        epochs=epochs,
+    )
 
 
 @router.post("/tasks", response_model=TrainingTaskResponse, status_code=status.HTTP_201_CREATED)
@@ -104,7 +125,7 @@ def create_training_task(
         # Dispatch Celery task
         from backend.app.workers.train_worker import run_training
         run_training.delay(str(task.id))
-        return task
+        return _to_training_task_response(task)
     except ValueError as exc:
         log_operation(
             db,
@@ -130,7 +151,7 @@ def list_training_tasks(
 ) -> Any:
     tasks = training_service.list_tasks(db)
     return TrainingTaskListResponse(
-        tasks=[TrainingTaskResponse.model_validate(t) for t in tasks],
+        tasks=[_to_training_task_response(t) for t in tasks],
         total=len(tasks),
     )
 
@@ -144,7 +165,7 @@ def get_training_task(
     task = training_service.get_task(db, task_id)
     if task is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
-    return task
+    return _to_training_task_response(task)
 
 
 @router.delete("/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)

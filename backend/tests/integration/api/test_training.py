@@ -33,7 +33,10 @@ def dataset_snapshot(session):
 
 
 @pytest.mark.anyio
-async def test_create_training_task(app, session, headers, dataset_snapshot):
+async def test_create_training_task(app, session, headers, dataset_snapshot, monkeypatch):
+    from backend.app.workers.train_worker import run_training
+
+    monkeypatch.setattr(run_training, "delay", lambda task_id: None)
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://test"
     ) as client:
@@ -53,6 +56,8 @@ async def test_create_training_task(app, session, headers, dataset_snapshot):
     body = response.json()
     assert body["status"] == "queued"
     assert body["task_type"] == "object_detection"
+    assert body["dataset_name"] == "test-dataset"
+    assert body["epochs"] == 100
 
 
 @pytest.mark.anyio
@@ -76,6 +81,8 @@ async def test_list_training_tasks(app, session, headers, dataset_snapshot):
     assert response.status_code == 200
     body = response.json()
     assert body["total"] >= 1
+    assert body["tasks"][0]["dataset_name"] == "test-dataset"
+    assert body["tasks"][0]["epochs"] == 0
 
 
 @pytest.mark.anyio

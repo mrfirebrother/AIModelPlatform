@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { createApi } from "../../lib/createApi";
 import { useToast } from "../../lib/toast";
@@ -18,6 +18,16 @@ const STATUS_BADGE: Record<string, string> = {
   failed: "badge-red",
   cancelled: "badge-gray",
 };
+
+function taskEpochs(task: TrainingTask): number {
+  const value = task.epochs ?? task.trainingConfigJson?.epochs ?? 0;
+  const epochs = Number(value);
+  return Number.isFinite(epochs) ? epochs : 0;
+}
+
+function taskDatasetName(task: TrainingTask): string {
+  return task.datasetName || task.datasetSnapshotId || "未知数据集";
+}
 
 export default function TrainingPage() {
   const api = useMemo(() => createApi(), []);
@@ -84,7 +94,7 @@ export default function TrainingPage() {
                 </div>
               </div>
               <div style={{ marginTop: 3, color: "var(--text-muted)", fontSize: 9, fontFamily: "Courier New, monospace" }}>
-                {t.datasetName || t.datasetSnapshotId} {"\u00b7"} {t.epochs ?? 0} {"\u8f6e"}
+                {taskDatasetName(t)} {"\u00b7"} {taskEpochs(t)} {"\u8f6e"}
               </div>
             </div>
           ))}
@@ -96,7 +106,7 @@ export default function TrainingPage() {
         <div className="card-head">
           <div>
             <div className="card-title">{selected ? selected.parentModelName || selected.id : "\u8bad\u7ec3\u8be6\u60c5"}</div>
-            <div className="card-kicker">{selected ? `${STATUS_LABEL[selected.status] || selected.status} \u00b7 ${selected.epochs ?? 0} {"\u8f6e"}` : "\u9009\u62e9\u4efb\u52a1\u67e5\u770b"}</div>
+            <div className="card-kicker">{selected ? `${STATUS_LABEL[selected.status] || selected.status} \u00b7 ${taskEpochs(selected)} {"\u8f6e"}` : "\u9009\u62e9\u4efb\u52a1\u67e5\u770b"}</div>
           </div>
         </div>
         {selected && (
