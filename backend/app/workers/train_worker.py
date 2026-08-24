@@ -16,6 +16,8 @@ from backend.app.training.resource_scheduler import (
 from backend.app.training.yolo_dataset import YoloDataset
 from backend.app.training.yolo_trainer import YoloTrainer, TrainResult
 
+from backend.app.workers.attempt_lease import heartbeat as attempt_heartbeat
+
 from .celery_app import celery_app
 
 logger = logging.getLogger(__name__)
@@ -75,6 +77,12 @@ def run_training(task_id: str) -> str:
         if task.status == "failed":
             logger.info("Task %s already failed", task_id)
             return f"task {task_id} already failed"
+
+        if task.cancellation_requested:
+            logger.info("Task %s has cancellation requested, aborting", task_id)
+            task.status = "cancelled"
+            session.commit()
+            return f"task {task_id} cancelled"
 
         if task.status == "running":
             active_attempt = None
@@ -151,24 +159,29 @@ def run_training(task_id: str) -> str:
                     with open(result.best_model_path, "rb") as f:
                         artifact_hash = f"sha256:{hashlib.sha256(f.read()).hexdigest()}"
 
+                    checkpoint_info = {
+                        "epoch": result.epochs_completed,
+                        "is_best": True,
+                        "metrics": result.metrics,
+                    }
+
                     model = complete_attempt(
                         session,
                         attempt.id,
                         artifact_path=result.best_model_path,
                         artifact_hash=artifact_hash,
                         metadata_json={"metrics": result.metrics, "epochs": result.epochs_completed},
+                        checkpoint_info=checkpoint_info,
                     )
                     session.commit()
                     logger.info("Task %s completed, candidate model %s created", task_id, model.id)
                     return f"task {task_id} completed, candidate {model.id}"
                 else:
-                    if attempt.status not in ("completed", "failed", "cancelled"):
-                        fail_attempt(session, attempt.id, error="No best model artifact produced")
+                    fail_attempt(session, attempt.id, error="No best model artifact produced")
                     session.commit()
                     return f"task {task_id} failed: no best model artifact"
             else:
-                if attempt.status not in ("completed", "failed", "cancelled"):
-                    fail_attempt(session, attempt.id, error=result.error or "Training failed")
+                fail_attempt(session, attempt.id, error=result.error or "Training failed")
                 session.commit()
                 logger.error("Task %s failed: %s", task_id, result.error)
                 return f"task {task_id} failed: {result.error}"
@@ -176,8 +189,7 @@ def run_training(task_id: str) -> str:
         except Exception as exc:
             try:
                 session.refresh(attempt)
-                if attempt.status not in ("completed", "failed", "cancelled"):
-                    fail_attempt(session, attempt.id, error=str(exc))
+                fail_attempt(session, attempt.id, error=str(exc))
                 session.commit()
             except Exception:
                 session.rollback()
@@ -202,13 +214,16 @@ def execute_training(
     1. Reserves GPU memory
     2. Runs training
     3. Releases GPU memory
-    4. Updates attempt status
+
+    Does NOT mutate attempt.status -- run_training uses
+    complete_attempt/fail_attempt for that.
     """
-    scheduler = ResourceScheduler(session=session, cpu_mode=True)
+    device = training_config.get("device", "cpu")
+    cpu_mode = device == "cpu"
+    scheduler = ResourceScheduler(session=session, cpu_mode=cpu_mode)
     lease = None
 
     try:
-        device = training_config.get("device", "cpu")
         if device != "cpu":
             lease = scheduler.reserve_gpu(
                 attempt_id=attempt.id,
@@ -224,23 +239,20 @@ def execute_training(
 
         YoloDataset.from_manifest(dataset_manifest, dataset_dir)
 
+        try:
+            attempt_heartbeat(session, attempt.id, attempt.lease_token)
+            session.flush()
+        except Exception:
+            logger.warning("Heartbeat failed for attempt %s", attempt.id)
+
         trainer = YoloTrainer(training_config)
         result = trainer.train(
             dataset_dir, checkpoint_dir, parent_model_path=parent_model_path
         )
 
-        if result.success:
-            attempt.status = "completed"
-        else:
-            attempt.status = "failed"
-            attempt.last_error = result.error
-
         return result
 
     except InsufficientGPUError as exc:
-        attempt.status = "failed"
-        attempt.last_error = f"GPU resource error: {exc}"
-        session.flush()
         return TrainResult(
             success=False,
             epochs_completed=0,
@@ -250,9 +262,6 @@ def execute_training(
         )
 
     except Exception as exc:
-        attempt.status = "failed"
-        attempt.last_error = str(exc)
-        session.flush()
         return TrainResult(
             success=False,
             epochs_completed=0,

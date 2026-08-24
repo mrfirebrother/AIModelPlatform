@@ -198,8 +198,8 @@ class TestCancelDuringTraining:
         cancel_task(session, task.id)
         session.commit()
         session.refresh(attempt)
-        assert attempt.status == "cancelled"
-        assert attempt.finished_at is not None
+        assert task.cancellation_requested is True
+        assert attempt.status == "running"
 
 
 class TestGPULeaseDuringTraining:

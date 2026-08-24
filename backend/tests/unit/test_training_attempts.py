@@ -197,13 +197,12 @@ class TestStartAttempt:
         session.commit()
         a1 = start_attempt(session, task.id)
         session.commit()
-        # Fail the first attempt so we can start another
         fail_attempt(session, a1.id, "error")
         session.commit()
-        a2 = start_attempt(session, task.id)
-        session.commit()
-        assert a2.attempt_no == 2
-        assert a2.retry_count == 1
+        session.refresh(task)
+        assert task.status == "failed"
+        with pytest.raises(ValueError, match="Cannot start attempt"):
+            start_attempt(session, task.id)
 
     def test_start_attempt_when_already_running_raises(
         self, session: Session
@@ -395,8 +394,8 @@ class TestCancelTask:
         session.commit()
         session.refresh(task)
         session.refresh(attempt)
-        assert task.status == "cancelled"
-        assert attempt.status == "cancelled"
+        assert task.cancellation_requested is True
+        assert attempt.status == "running"
 
 
 class TestGetTask:

@@ -127,6 +127,7 @@ def create_training_task(
 
         from backend.app.workers.train_worker import run_training
         try:
+            db.commit()
             run_training.delay(task_id)
         except Exception as exc:
             task.status = "failed"

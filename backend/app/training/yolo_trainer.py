@@ -51,7 +51,15 @@ class YoloTrainer:
                 error=f"data.yaml not found at {data_yaml}",
             )
 
-        if parent_model_path and Path(parent_model_path).exists():
+        if parent_model_path:
+            if not Path(parent_model_path).exists():
+                return TrainResult(
+                    success=False,
+                    epochs_completed=0,
+                    best_model_path=None,
+                    latest_model_path=None,
+                    error=f"Parent model not found: {parent_model_path}",
+                )
             model = YOLO(parent_model_path)
         else:
             model = YOLO(f"{self.model_name}.pt")

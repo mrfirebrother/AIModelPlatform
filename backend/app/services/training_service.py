@@ -1,7 +1,7 @@
 ﻿from __future__ import annotations
 
 import hashlib
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
 from sqlalchemy import func, select
@@ -112,7 +112,7 @@ def start_attempt(session: Session, task_id: UUID) -> TrainingAttempt:
         retry_count=retry_count,
         started_at=now,
         heartbeat_at=now,
-        lease_expires_at=now,
+        lease_expires_at=now + timedelta(minutes=30),
     )
     session.add(attempt)
 
@@ -233,16 +233,11 @@ def cancel_task(session: Session, task_id: UUID) -> TrainingTask:
     if task.status in ("completed", "cancelled"):
         return task
 
-    task.status = "cancelled"
-    running_attempts = session.execute(
-        select(TrainingAttempt).where(
-            TrainingAttempt.task_id == task_id,
-            TrainingAttempt.status.in_(["pending", "running", "recovering"]),
-        )
-    ).scalars().all()
-    for attempt in running_attempts:
-        attempt.status = "cancelled"
-        attempt.finished_at = datetime.now(timezone.utc)
+    task.cancellation_requested = True
+
+    if task.status == "queued":
+        task.status = "cancelled"
+
     session.flush()
     return task
 

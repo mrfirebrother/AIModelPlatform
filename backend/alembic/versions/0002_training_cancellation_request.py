@@ -9,7 +9,7 @@ import sqlalchemy as sa
 
 
 revision = "0002"
-down_revision = "0001"
+down_revision = "0001_initial_schema"
 branch_labels = None
 depends_on = None
 

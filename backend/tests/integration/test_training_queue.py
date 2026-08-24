@@ -124,7 +124,7 @@ def _create_training_attempt(
     attempt = TrainingAttempt(
         task_id=task.id,
         attempt_no=1,
-        status="pending",
+        status="running",
     )
     session.add(attempt)
     session.flush()
@@ -181,7 +181,7 @@ class TestTrainingQueueIntegration:
 
         assert isinstance(result, TrainResult)
         assert result.success is True
-        assert attempt.status == "completed"
+        assert attempt.status == "running"
 
     def test_gpu_lease_released_after_training(
         self, session: Session, gpu_resource: GPUResource
