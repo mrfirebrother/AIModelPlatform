@@ -56,6 +56,18 @@ class TrainingTaskResponse(BaseModel):
     created_by: str | None
     model_config = {"from_attributes": True}
 
+    @property
+    def epochs(self) -> int:
+        return self.training_config_json.get("epochs", 0)
+
+    @property
+    def parent_model_name(self) -> str | None:
+        return None  # Would need to query DB
+
+    @property
+    def dataset_name(self) -> str | None:
+        return None  # Would need to query DB
+
 
 class TrainingTaskListResponse(BaseModel):
     tasks: list[TrainingTaskResponse]
@@ -89,6 +101,9 @@ def create_training_task(
             status="success",
             summary_json={"task_id": str(task.id)},
         )
+        # Dispatch Celery task
+        from backend.app.workers.train_worker import run_training
+        run_training.delay(str(task.id))
         return task
     except ValueError as exc:
         log_operation(
