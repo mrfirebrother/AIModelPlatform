@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from backend.app.schemas import CAMEL_CONFIG
 from backend.app.api.dependencies import get_db, verify_api_key
 from backend.app.observability.operation_log import log_operation
 from backend.app.services import training_service
