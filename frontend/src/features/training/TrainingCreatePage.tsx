@@ -27,15 +27,18 @@ export default function TrainingCreatePage() {
     e.preventDefault();
     const parent = models.find((m) => m.id === parentId);
     const dataset = datasets.find((d) => d.id === datasetId);
+    const snapshotId = dataset?.latestSnapshotId;
+    if (!snapshotId) {
+      toast.error("数据集没有快照，请先导入并验证数据集");
+      return;
+    }
     try {
       await api.createTrainingTask({
-        parentModelNodeId: parentId,
-        parentModelName: parent?.name,
-        datasetSnapshotId: datasetId,
-        datasetName: dataset?.name,
-        epochs,
+        datasetSnapshotId: snapshotId,
+        parentModelNodeId: parentId || undefined,
         taskType: "object_detection",
         modelFamily: "YOLOv8",
+        trainingConfigJson: { epochs },
       });
       toast.success("训练任务已创建");
       navigate("/training");

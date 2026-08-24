@@ -87,6 +87,7 @@ export interface TrainingTask {
   currentEpoch?: number;
   loss?: number;
   progress?: number;
+  trainingConfigJson?: Record<string, unknown>;
   createdAt: string;
   startedAt?: string;
   completedAt?: string;
