@@ -3,6 +3,7 @@
 import hashlib
 import logging
 import threading
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -161,6 +162,14 @@ def run_training(task_id: str) -> str:
             "names": names,
         }
 
+        computed_hash = f"sha256:{hashlib.sha256(str(sorted(dataset_manifest.items())).encode()).hexdigest()}"
+        stored_hash = dataset_snapshot.manifest_hash
+        if stored_hash is not None and stored_hash.startswith("sha256:") and len(stored_hash) == 64 + 7:
+            if computed_hash != stored_hash:
+                fail_attempt(session, attempt.id, error="Manifest hash mismatch")
+                session.commit()
+                return f"manifest hash mismatch for task {task_id}"
+
         attempt.gpu_device = training_config.get("device")
         session.flush()
 
@@ -182,6 +191,10 @@ def run_training(task_id: str) -> str:
             if task.cancellation_requested:
                 logger.info("Task %s was cancelled during training, cancelling task", task_id)
                 cancel_task(session, task.id)
+                if attempt.status in ("running", "recovering"):
+                    attempt.status = "cancelled"
+                    attempt.finished_at = datetime.now(timezone.utc)
+                task.status = "cancelled"
                 session.commit()
                 return f"task {task_id} cancelled during training"
 
@@ -290,6 +303,7 @@ def execute_training(
             attempt_id=attempt.id,
             lease_token=attempt.lease_token,
             interval=heartbeat_interval,
+            cpu_mode=cpu_mode,
         )
         heartbeat_thread.start()
 
@@ -330,6 +344,7 @@ class _HeartbeatThread(threading.Thread):
         attempt_id: UUID,
         lease_token: UUID | None,
         interval: int = HEARTBEAT_INTERVAL_SECONDS,
+        cpu_mode: bool = False,
     ) -> None:
         super().__init__(daemon=True)
         self._session = session
@@ -337,6 +352,7 @@ class _HeartbeatThread(threading.Thread):
         self._lease_token = lease_token
         self._interval = interval
         self._stop_event = threading.Event()
+        self._cpu_mode = cpu_mode
 
     def stop(self) -> None:
         self._stop_event.set()
@@ -351,7 +367,7 @@ class _HeartbeatThread(threading.Thread):
             try:
                 with worker_session() as hb_session:
                     attempt_heartbeat(hb_session, self._attempt_id, self._lease_token)
-                    if self._lease_token is not None:
+                    if not self._cpu_mode and self._lease_token is not None:
                         scheduler = ResourceScheduler(session=hb_session, cpu_mode=True)
                         scheduler.heartbeat(self._attempt_id, self._lease_token)
             except Exception:

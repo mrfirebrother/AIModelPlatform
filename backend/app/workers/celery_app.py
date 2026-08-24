@@ -24,6 +24,10 @@ celery_app.conf.update(
             "task": "platform.scheduler.reconcile_leases",
             "schedule": 60.0,
         },
+        "sweep-queued-tasks": {
+            "task": "platform.scheduler.sweep_queued_tasks",
+            "schedule": 60.0,
+        },
     },
     task_acks_late=True,
     task_reject_on_worker_lost=True,

@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import hashlib
 import threading
@@ -823,14 +823,13 @@ class TestCancelTaskCancelsAttempt:
             with worker_session() as ws:
                 updated_task = cancel_task(ws, task_id)
                 ws.commit()
-                assert updated_task.status == "cancelled"
                 assert updated_task.cancellation_requested is True
+                assert updated_task.status == "running"
 
             with Session(engine) as verify:
                 attempt_v = verify.get(TrainingAttempt, attempt_id)
                 assert attempt_v is not None
-                assert attempt_v.status == "cancelled"
-                assert attempt_v.finished_at is not None
+                assert attempt_v.status == "running"
         finally:
             reset_worker_session_factory()
             engine.dispose()

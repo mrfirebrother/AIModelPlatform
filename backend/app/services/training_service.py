@@ -247,17 +247,6 @@ def cancel_task(session: Session, task_id: UUID) -> TrainingTask:
 
     if task.status == "queued":
         task.status = "cancelled"
-    elif task.status in ("running", "recovering"):
-        attempt = session.scalar(
-            select(TrainingAttempt).where(
-                TrainingAttempt.task_id == task_id,
-                TrainingAttempt.status.in_(["running", "recovering"]),
-            ).with_for_update()
-        )
-        if attempt is not None:
-            attempt.status = "cancelled"
-            attempt.finished_at = datetime.now(timezone.utc)
-        task.status = "cancelled"
 
     session.flush()
     return task
