@@ -1004,6 +1004,7 @@ class TestHeartbeatUpdatesGPULease:
             attempt_id=attempt_id,
             lease_token=lease_token,
             interval=0.05,
+            gpu_lease_token=uuid4(),
         )
         thread.start()
         import time

@@ -18,6 +18,8 @@ from backend.app.training.resource_scheduler import (
 )
 from backend.app.training.yolo_dataset import YoloDataset
 from backend.app.training.yolo_trainer import YoloTrainer, TrainResult
+from backend.app.storage.artifacts import compute_file_hash
+from backend.app.services.resource_lease import heartbeat_lease
 
 from backend.app.workers.attempt_lease import heartbeat as attempt_heartbeat
 
@@ -150,6 +152,17 @@ def run_training(task_id: str) -> str:
             session.commit()
             return f"dataset snapshot manifest hash missing for task {task_id}"
 
+        manifest_path = Path(dataset_snapshot.manifest_path)
+        if not manifest_path.exists():
+            fail_attempt(session, attempt.id, error="Dataset snapshot manifest file missing")
+            session.commit()
+            return f"dataset snapshot manifest file missing for task {task_id}"
+        actual_manifest_hash = compute_file_hash(manifest_path)
+        if actual_manifest_hash != dataset_snapshot.manifest_hash:
+            fail_attempt(session, attempt.id, error="Manifest hash mismatch")
+            session.commit()
+            return f"manifest hash mismatch for task {task_id}"
+
         label_schema = dataset_snapshot.label_schema
         nc = len(label_schema.classes) if label_schema else 0
         names = [c.semantic_key for c in label_schema.classes] if label_schema else []
@@ -161,14 +174,6 @@ def run_training(task_id: str) -> str:
             "nc": nc,
             "names": names,
         }
-
-        computed_hash = f"sha256:{hashlib.sha256(str(sorted(dataset_manifest.items())).encode()).hexdigest()}"
-        stored_hash = dataset_snapshot.manifest_hash
-        if stored_hash is not None and stored_hash.startswith("sha256:") and len(stored_hash) == 64 + 7:
-            if computed_hash != stored_hash:
-                fail_attempt(session, attempt.id, error="Manifest hash mismatch")
-                session.commit()
-                return f"manifest hash mismatch for task {task_id}"
 
         attempt.gpu_device = training_config.get("device")
         session.flush()
@@ -283,8 +288,6 @@ def execute_training(
                 required_memory_mb=required_memory_mb,
                 gpu_device=attempt.gpu_device,
             )
-            attempt.lease_token = lease.lease_token
-            attempt.fencing_token = lease.fencing_token
             session.flush()
 
         dataset_dir = output_dir / "dataset"
@@ -304,6 +307,8 @@ def execute_training(
             lease_token=attempt.lease_token,
             interval=heartbeat_interval,
             cpu_mode=cpu_mode,
+            gpu_lease_id=lease.id if lease is not None else None,
+            gpu_lease_token=lease.lease_token if lease is not None else None,
         )
         heartbeat_thread.start()
 
@@ -345,6 +350,8 @@ class _HeartbeatThread(threading.Thread):
         lease_token: UUID | None,
         interval: int = HEARTBEAT_INTERVAL_SECONDS,
         cpu_mode: bool = False,
+        gpu_lease_id: UUID | None = None,
+        gpu_lease_token: UUID | None = None,
     ) -> None:
         super().__init__(daemon=True)
         self._session = session
@@ -353,6 +360,8 @@ class _HeartbeatThread(threading.Thread):
         self._interval = interval
         self._stop_event = threading.Event()
         self._cpu_mode = cpu_mode
+        self._gpu_lease_id = gpu_lease_id
+        self._gpu_lease_token = gpu_lease_token
 
     def stop(self) -> None:
         self._stop_event.set()
@@ -367,9 +376,12 @@ class _HeartbeatThread(threading.Thread):
             try:
                 with worker_session() as hb_session:
                     attempt_heartbeat(hb_session, self._attempt_id, self._lease_token)
-                    if not self._cpu_mode and self._lease_token is not None:
-                        scheduler = ResourceScheduler(session=hb_session, cpu_mode=True)
-                        scheduler.heartbeat(self._attempt_id, self._lease_token)
+                    if self._gpu_lease_id is not None and self._gpu_lease_token is not None:
+                        heartbeat_lease(
+                            hb_session,
+                            self._gpu_lease_id,
+                            self._gpu_lease_token,
+                        )
             except Exception:
                 logger.warning(
                     "Heartbeat failed for attempt %s", self._attempt_id
