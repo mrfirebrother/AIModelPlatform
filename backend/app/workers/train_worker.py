@@ -312,7 +312,11 @@ def execute_training(
         )
         heartbeat_thread.start()
 
-        trainer = YoloTrainer(training_config)
+        def check_cancel():
+            session.refresh(task)
+            return bool(task.cancellation_requested)
+
+        trainer = YoloTrainer(training_config, check_cancel=check_cancel)
         result = trainer.train(
             dataset_dir, checkpoint_dir, parent_model_path=parent_model_path
         )

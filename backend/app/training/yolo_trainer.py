@@ -2,13 +2,12 @@
 
 import logging
 import multiprocessing
-import signal
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from .yolo_dataset import YoloDataset
-from .checkpoint_manager import CheckpointManager
 
 logger = logging.getLogger(__name__)
 
@@ -84,9 +83,11 @@ def _train_worker(
 
 
 class YoloTrainer:
-    def __init__(self, config: dict[str, Any]) -> None:
+    def __init__(self, config: dict[str, Any], check_cancel=None) -> None:
         self.config = config
         self._process: multiprocessing.Process | None = None
+        self._check_cancel = check_cancel
+        self._stop_event = threading.Event()
 
     def train(
         self,
@@ -101,13 +102,31 @@ class YoloTrainer:
             daemon=True,
         )
         self._process = proc
+        self._stop_event.clear()
         proc.start()
+
+        # Check cancellation in a separate thread
+        def _cancel_checker():
+            while proc.is_alive() and not self._stop_event.is_set():
+                if self._check_cancel and self._check_cancel():
+                    logger.info("Cancellation requested, terminating training subprocess")
+                    self._stop_event.set()
+                    proc.terminate()
+                    return
+                self._stop_event.wait(timeout=1.0)
+
+        checker = threading.Thread(target=_cancel_checker, daemon=True)
+        checker.start()
         proc.join()
+        self._stop_event.set()
+        checker.join(timeout=2)
+
         if result_queue.empty():
             return TrainResult(success=False, epochs_completed=0, best_model_path=None, latest_model_path=None, error="Training process returned no result")
         return result_queue.get(timeout=5)
 
     def stop(self) -> None:
+        self._stop_event.set()
         if self._process and self._process.is_alive():
             self._process.terminate()
             self._process.join(timeout=5)
