@@ -14,6 +14,8 @@ postgres/
 infra/redis/
 infra/datasets/
 infra/models/
+infra/checkpoints/
+infra/logs/
 dataset/
 *.pt
 *.zip
