@@ -42,6 +42,7 @@ function durationLabel(start?: string | null, end?: string | null): string {
   const s = new Date(start).getTime();
   const e = end ? new Date(end).getTime() : Date.now();
   const ms = Math.max(0, e - s);
+  if (ms < 60000) return `${Math.floor(ms / 1000)}s`;
   const m = Math.floor(ms / 60000);
   if (m < 60) return `${m}m`;
   const h = Math.floor(m / 60);
@@ -214,17 +215,19 @@ export default function TrainingPage() {
 
       {/* table */}
       <div className="card" style={{ overflow: "hidden" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "2fr 1.2fr 1.2fr 1fr 80px", gap: 0, padding: "10px 16px", borderBottom: "1px solid #dce8f0", background: "#f8fafc", fontSize: 11, fontWeight: 600, color: "var(--text-muted)" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 0.8fr 80px", gap: 0, padding: "10px 16px", borderBottom: "1px solid #dce8f0", background: "#f8fafc", fontSize: 11, fontWeight: 600, color: "var(--text-muted)" }}>
           <span>任务</span>
           <span>配置</span>
           <button onClick={() => { setSortKey("status"); setSortDir((d) => d === "asc" ? "desc" : "asc"); }} style={{ border: 0, background: "none", cursor: "pointer", fontWeight: 600, color: "var(--text-muted)", textAlign: "left", fontSize: 11 }}>状态 {sortKey === "status" ? (sortDir === "asc" ? "↑" : "↓") : ""}</button>
           <button onClick={() => { setSortKey("time"); setSortDir((d) => d === "asc" ? "desc" : "asc"); }} style={{ border: 0, background: "none", cursor: "pointer", fontWeight: 600, color: "var(--text-muted)", textAlign: "left", fontSize: 11 }}>时间 {sortKey === "time" ? (sortDir === "asc" ? "↑" : "↓") : ""}</button>
+          <span>耗时</span>
           <span style={{ textAlign: "right" }}>操作</span>
         </div>
         {pageItems.map((t) => {
           const isSel = selectedId === t.id;
+          const dur = t.status === "running" ? durationLabel((t as any).createdAt) : t.status === "completed" || t.status === "failed" || t.status === "cancelled" ? durationLabel((t as any).createdAt, (t as any).updatedAt) : "—";
           return (
-            <div key={t.id} onClick={() => setSelectedId(isSel ? null : t.id)} style={{ display: "grid", gridTemplateColumns: "2fr 1.2fr 1.2fr 1fr 80px", gap: 0, padding: "10px 16px", borderBottom: "1px solid #eef3f8", background: isSel ? "#e7f1fa" : undefined, cursor: "pointer", alignItems: "center" }}>
+            <div key={t.id} onClick={() => setSelectedId(isSel ? null : t.id)} style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 0.8fr 80px", gap: 0, padding: "10px 16px", borderBottom: "1px solid #eef3f8", background: isSel ? "#e7f1fa" : undefined, cursor: "pointer", alignItems: "center" }}>
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontWeight: 600, fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(t as any).parentModelName || t.id.slice(0, 8)}</div>
                 <div style={{ color: "var(--text-muted)", fontSize: 9, fontFamily: "Courier New, monospace", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{taskDatasetName(t)}</div>
@@ -233,10 +236,8 @@ export default function TrainingPage() {
               <div>
                 <span className={`badge ${STATUS_BADGE[t.status] || "badge-gray"}`} style={{ fontSize: 9 }}>{STATUS_LABEL[t.status] || t.status}</span>
               </div>
-              <div style={{ fontSize: 11 }}>
-                <div>{formatTime((t as any).createdAt)}</div>
-                <div style={{ fontSize: 9, color: "var(--text-muted)" }}>{t.status === "running" ? `耗时 ${durationLabel((t as any).createdAt)}` : t.status === "completed" && logs?.attempts?.[0]?.startedAt ? `耗时 ${durationLabel(logs.attempts[0].startedAt, logs.attempts[0].finishedAt)}` : ""}</div>
-              </div>
+              <div style={{ fontSize: 11 }}>{formatTime((t as any).createdAt)}</div>
+              <div style={{ fontSize: 11, color: t.status === "running" ? "var(--accent-orange)" : "var(--text-muted)" }}>{dur}</div>
               <div style={{ textAlign: "right" }}>
                 {t.status === "running" ? (
                   <button className="btn small" onClick={(e) => { e.stopPropagation(); handleCancel(t.id); }} style={{ padding: "2px 8px", fontSize: 11, color: "#c47728" }}>取消</button>

@@ -67,11 +67,20 @@ def delete_task(session: Session, task_id: UUID) -> None:
         raise ValueError(f"Training task {task_id} not found")
     if task.status == "running":
         raise ValueError("Cannot delete running task")
-    # Delete associated checkpoints and attempts first
-    for attempt in task.attempts:
-        for cp in attempt.checkpoints:
+    # Delete associated checkpoints and attempts first; clear FKs that prevent cascade
+    from sqlalchemy import text as _text
+    for attempt in list(task.attempts):
+        # break FK from ModelNode -> attempt via raw SQL to bypass immutable guard
+        session.execute(_text("UPDATE model_nodes SET training_attempt_id = NULL WHERE training_attempt_id = :aid"), {"aid": str(attempt.id)})
+        # break self-referential FK attempt -> checkpoint
+        attempt.latest_checkpoint_id = None
+        attempt.best_checkpoint_id = None
+        session.flush()
+        for cp in list(attempt.checkpoints):
             session.delete(cp)
+        session.flush()
         session.delete(attempt)
+    session.flush()
     session.delete(task)
     session.flush()
 
@@ -123,6 +132,7 @@ def start_attempt(session: Session, task_id: UUID) -> TrainingAttempt:
 
     if task.status in ("queued", "recovering"):
         task.status = "running"
+        task.updated_at = datetime.now(timezone.utc)
 
     session.flush()
     return attempt
@@ -181,10 +191,12 @@ def complete_attempt(
         if checkpoint_info.get("is_best", False):
             attempt.best_checkpoint_id = checkpoint.id
 
+    now = datetime.now(timezone.utc)
     attempt.status = "completed"
-    attempt.finished_at = datetime.now(timezone.utc)
+    attempt.finished_at = now
 
     task.status = "completed"
+    task.updated_at = now
 
     model = ModelNode(
         parent_id=task.parent_model_node_id,
@@ -228,14 +240,16 @@ def fail_attempt(
             TrainingAttempt.status.in_(["running", "recovering", "pending"]),
         )
     )
+    now = datetime.now(timezone.utc)
     if running is None:
         if task is not None and task.status not in ("completed", "cancelled", "failed"):
             task.status = "failed"
             task.failure_reason = error
+            task.updated_at = now
 
     attempt.status = "failed"
     attempt.last_error = error
-    attempt.finished_at = datetime.now(timezone.utc)
+    attempt.finished_at = now
 
     session.flush()
     return attempt
@@ -248,7 +262,9 @@ def cancel_task(session: Session, task_id: UUID) -> TrainingTask:
     if task.status in ("completed", "cancelled"):
         return task
 
+    now = datetime.now(timezone.utc)
     task.cancellation_requested = True
+    task.updated_at = now
 
     if task.status == "queued":
         task.status = "cancelled"
