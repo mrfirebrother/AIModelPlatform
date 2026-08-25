@@ -229,6 +229,18 @@ def run_training(task_id: str) -> str:
                         checkpoint_info=checkpoint_info,
                         label_schema_id=label_schema_id,
                     )
+                    # auto-create pending evaluation so it appears in 评估收件箱
+                    try:
+                        from backend.app.evaluation.policy import EvaluationPolicy
+                        from backend.app.services.evaluation_service import create_evaluation
+                        policy_json = task.evaluation_policy_json or {}
+                        if policy_json and "min_mAP50" in policy_json:
+                            policy = EvaluationPolicy.from_dict(policy_json)
+                        else:
+                            policy = EvaluationPolicy(min_mAP50=0.0, min_precision=0.0, min_recall=0.0, max_regression_ratio=1.0, require_per_class_coverage=False)
+                        create_evaluation(session, model_node_id=model.id, dataset_snapshot_id=task.dataset_snapshot_id, policy=policy)
+                    except Exception as eval_exc:
+                        logger.warning("Failed to auto-create evaluation for model %s: %s", model.id, eval_exc)
                     session.commit()
                     logger.info("Task %s completed, candidate model %s created", task_id, model.id)
                     return f"task {task_id} completed, candidate {model.id}"
