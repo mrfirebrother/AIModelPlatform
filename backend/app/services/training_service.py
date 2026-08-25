@@ -117,6 +117,13 @@ def start_attempt(session: Session, task_id: UUID) -> TrainingAttempt:
     )
 
     now = datetime.now(timezone.utc)
+    # 30m 对 CPU 1 轮 (~33m) 过紧，改为 120m，避免 heartbeat 单次抖动误判为 Lease expired
+    lease_minutes = 120
+    try:
+        epochs = int((task.training_config_json or {}).get("epochs", 1))
+        lease_minutes = max(120, epochs * 45)
+    except Exception:
+        pass
     attempt = TrainingAttempt(
         task=task,
         attempt_no=last_attempt_no + 1,
@@ -126,7 +133,7 @@ def start_attempt(session: Session, task_id: UUID) -> TrainingAttempt:
         retry_count=retry_count,
         started_at=now,
         heartbeat_at=now,
-        lease_expires_at=now + timedelta(minutes=30),
+        lease_expires_at=now + timedelta(minutes=lease_minutes),
     )
     session.add(attempt)
 
