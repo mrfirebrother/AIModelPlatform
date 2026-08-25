@@ -57,6 +57,8 @@ class TrainingTaskResponse(BaseModel):
     parent_model_name: str | None = None
     dataset_name: str | None = None
     epochs: int = 0
+    created_at: str | None = None
+    updated_at: str | None = None
     model_config = {"from_attributes": True}
 
 class TrainingTaskListResponse(BaseModel):
@@ -92,6 +94,8 @@ def _to_training_task_response(task: Any) -> TrainingTaskResponse:
             else None
         ),
         epochs=epochs,
+        created_at=task.created_at.isoformat() if getattr(task, "created_at", None) else None,
+        updated_at=task.updated_at.isoformat() if getattr(task, "updated_at", None) else None,
     )
 
 

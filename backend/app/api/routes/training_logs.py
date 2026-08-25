@@ -94,6 +94,8 @@ def get_training_logs(
     for a in attempts:
         if a.current_epoch > current_epoch:
             current_epoch = a.current_epoch
+    if current_epoch == 0 and task.status == "completed":
+        current_epoch = total_epochs
 
     attempt_entries = [
         AttemptLogEntry(

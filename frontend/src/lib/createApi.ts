@@ -1,4 +1,4 @@
-import type { ApiClient } from "./api";
+﻿import type { ApiClient } from "./api";
 import { mockApi } from "./mockApi";
 
 const API_BASE = import.meta.env.VITE_API_URL || "";
@@ -126,9 +126,9 @@ const realApi: ApiClient = {
   createTrainingTask: (data) => postJson("/api/training/tasks", data),
   deleteTrainingTask: (id) => fetch(`${API_BASE}/api/training/tasks/${id}`, { method: "DELETE", headers: { "X-API-Key": import.meta.env.VITE_API_KEY || "change-me" } }).then(() => {}),
   cancelTrainingTask: (id) => postJson(`/api/training/tasks/${id}/cancel`, {}),
-  getTrainingLogs: (taskId: string) => fetchJson<any>(`/api/training/${taskId}/logs`),
-  getTrainingMetrics: (taskId: string) => fetchJson<any>(`/api/training/${taskId}/metrics`),
-  getTrainingCheckpoint: (taskId: string) => fetchJson<any>(`/api/training/${taskId}/checkpoint`),
+  getTrainingLogs: (taskId: string) => fetchJson<any>(`/api/training/${taskId}/logs`).then(camelizeKeys),
+  getTrainingMetrics: (taskId: string) => fetchJson<any>(`/api/training/${taskId}/metrics`).then(camelizeKeys),
+  getTrainingCheckpoint: (taskId: string) => fetchJson<any>(`/api/training/${taskId}/checkpoint`).then(camelizeKeys),
   getEvaluations: () => fetchJson<any>("/api/evaluations").then((r) => camelizeKeys(r.evaluations ?? r)),
   getResourceStatus: async () => {
     const gpuStatus = await fetchJson<any>("/api/gpu/status").catch(() => null);
