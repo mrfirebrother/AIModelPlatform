@@ -1,6 +1,8 @@
 ﻿from __future__ import annotations
 
 import logging
+import multiprocessing
+import signal
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -21,17 +23,70 @@ class TrainResult:
     error: str | None = None
 
 
+def _train_worker(
+    config: dict[str, Any],
+    dataset_dir: str,
+    checkpoint_dir: str,
+    parent_model_path: str | None,
+    result_queue: multiprocessing.Queue,
+) -> None:
+    """Run YOLO training in a subprocess for clean termination."""
+    try:
+        from ultralytics import YOLO
+
+        data_yaml = Path(dataset_dir) / "data.yaml"
+        if not data_yaml.exists():
+            result_queue.put(TrainResult(success=False, epochs_completed=0, best_model_path=None, latest_model_path=None, error=f"data.yaml not found"))
+            return
+
+        if parent_model_path and Path(parent_model_path).exists():
+            model = YOLO(parent_model_path)
+        else:
+            model = YOLO("yolov8n.pt")
+
+        results = model.train(
+            data=str(data_yaml),
+            epochs=config.get("epochs", 3),
+            imgsz=config.get("imgsz", 640),
+            batch=config.get("batch", 16),
+            device=config.get("device", "cpu"),
+            patience=config.get("patience", 10),
+            project=str(checkpoint_dir),
+            name="train",
+            exist_ok=True,
+            verbose=False,
+        )
+
+        results_dir = Path(checkpoint_dir) / "train"
+        best_src = results_dir / "weights" / "best.pt"
+        last_src = results_dir / "weights" / "last.pt"
+
+        best_path = str(best_src) if best_src.exists() else None
+        latest_path = str(last_src) if last_src.exists() else None
+
+        metrics = {}
+        if hasattr(results, "results_dict"):
+            metrics = {k: float(v) if isinstance(v, (int, float)) else str(v) for k, v in results.results_dict.items()}
+
+        result_queue.put(TrainResult(
+            success=True,
+            epochs_completed=config.get("epochs", 3),
+            best_model_path=best_path,
+            latest_model_path=latest_path,
+            metrics=metrics,
+        ))
+
+    except Exception as exc:
+        logger.exception("Training failed")
+        result_queue.put(TrainResult(
+            success=False, epochs_completed=0, best_model_path=None, latest_model_path=None, error=str(exc),
+        ))
+
+
 class YoloTrainer:
     def __init__(self, config: dict[str, Any]) -> None:
         self.config = config
-        self.epochs = config.get("epochs", 3)
-        self.imgsz = config.get("imgsz", 640)
-        self.batch = config.get("batch", 16)
-        self.model_name = config.get("model_name", "yolov8n")
-        self.device = YoloDataset.resolve_device(config.get("device", "cpu"))
-        self.patience = config.get("patience", 10)
-        self.project = config.get("project", None)
-        self.name = config.get("name", None)
+        self._process: multiprocessing.Process | None = None
 
     def train(
         self,
@@ -39,87 +94,20 @@ class YoloTrainer:
         checkpoint_dir: Path,
         parent_model_path: str | None = None,
     ) -> TrainResult:
-        from ultralytics import YOLO
-
-        data_yaml = dataset_dir / "data.yaml"
-        if not data_yaml.exists():
-            return TrainResult(
-                success=False,
-                epochs_completed=0,
-                best_model_path=None,
-                latest_model_path=None,
-                error=f"data.yaml not found at {data_yaml}",
-            )
-
-        if parent_model_path:
-            if not Path(parent_model_path).exists():
-                return TrainResult(
-                    success=False,
-                    epochs_completed=0,
-                    best_model_path=None,
-                    latest_model_path=None,
-                    error=f"Parent model not found: {parent_model_path}",
-                )
-            model = YOLO(parent_model_path)
-        else:
-            model = YOLO(f"{self.model_name}.pt")
-
-        ckpt_mgr = CheckpointManager(checkpoint_dir)
-
-        train_args: dict[str, Any] = {
-            "data": str(data_yaml),
-            "epochs": self.epochs,
-            "imgsz": self.imgsz,
-            "batch": self.batch,
-            "device": self.device,
-            "patience": self.patience,
-            "project": str(checkpoint_dir),
-            "name": "train",
-            "exist_ok": True,
-            "verbose": False,
-        }
-
-        try:
-            results = model.train(**train_args)
-        except Exception as exc:
-            logger.exception("Training failed")
-            return TrainResult(
-                success=False,
-                epochs_completed=0,
-                best_model_path=None,
-                latest_model_path=None,
-                error=str(exc),
-            )
-
-        results_dir = Path(checkpoint_dir) / "train"
-        best_src = results_dir / "weights" / "best.pt"
-        last_src = results_dir / "weights" / "last.pt"
-
-        best_path: str | None = None
-        latest_path: str | None = None
-        metrics: dict[str, Any] = {}
-
-        if best_src.exists():
-            cp = ckpt_mgr.save_checkpoint(best_src, epoch=self.epochs, is_best=True)
-            best_path = str(cp.checkpoint_path)
-
-        if last_src.exists():
-            cp = ckpt_mgr.save_checkpoint(last_src, epoch=self.epochs, is_best=False)
-            latest_path = str(cp.checkpoint_path)
-
-        if hasattr(results, "results_dict"):
-            results_dict = results.results_dict if hasattr(results, "results_dict") else {}
-            metrics = {
-                k: float(v) if isinstance(v, (int, float)) else str(v)
-                for k, v in results_dict.items()
-            }
-        elif isinstance(results, dict):
-            metrics = {k: v for k, v in results.items()}
-
-        return TrainResult(
-            success=True,
-            epochs_completed=self.epochs,
-            best_model_path=best_path,
-            latest_model_path=latest_path,
-            metrics=metrics,
+        result_queue: multiprocessing.Queue = multiprocessing.Queue()
+        proc = multiprocessing.Process(
+            target=_train_worker,
+            args=(self.config, str(dataset_dir), str(checkpoint_dir), parent_model_path, result_queue),
+            daemon=True,
         )
+        self._process = proc
+        proc.start()
+        proc.join()
+        if result_queue.empty():
+            return TrainResult(success=False, epochs_completed=0, best_model_path=None, latest_model_path=None, error="Training process returned no result")
+        return result_queue.get(timeout=5)
+
+    def stop(self) -> None:
+        if self._process and self._process.is_alive():
+            self._process.terminate()
+            self._process.join(timeout=5)

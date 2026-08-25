@@ -317,6 +317,14 @@ def execute_training(
             dataset_dir, checkpoint_dir, parent_model_path=parent_model_path
         )
 
+        # Check for cancellation after training
+        session.refresh(task)
+        if task.cancellation_requested:
+            trainer.stop()
+            cancel_task(session, task_id)
+            session.commit()
+            return TrainResult(success=False, epochs_completed=0, best_model_path=None, latest_model_path=None, error="Training cancelled")
+
         return result
 
     except InsufficientGPUError as exc:
@@ -329,6 +337,7 @@ def execute_training(
         )
 
     finally:
+        trainer.stop()  # Stop subprocess if still running
         if heartbeat_thread is not None:
             heartbeat_thread.stop()
             heartbeat_thread.join(timeout=5)
