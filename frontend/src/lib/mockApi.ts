@@ -456,6 +456,12 @@ export const mockApi: ApiClient = {
     if (idx !== -1) trainingTasks.splice(idx, 1);
   },
 
+  async cancelTrainingTask(id: string) {
+    await delay(80);
+    const task = trainingTasks.find((t) => t.id === id);
+    if (task) task.status = "cancelled";
+  },
+
   async getTrainingLogs(taskId: string): Promise<TrainingLogs> {
     await delay(60);
     const task = trainingTasks.find((t) => t.id === taskId);

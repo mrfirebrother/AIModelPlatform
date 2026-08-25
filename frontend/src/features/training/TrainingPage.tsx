@@ -53,6 +53,18 @@ export default function TrainingPage() {
     }
   };
 
+  const handleCancel = async (id: string) => {
+    const confirmed = await toast.confirm("确定取消此训练任务？");
+    if (!confirmed) return;
+    try {
+      await api.cancelTrainingTask(id);
+      toast.success("训练任务已取消");
+      setTasks((prev) => prev.map((t) => t.id === id ? { ...t, status: "cancelled" as const } : t));
+    } catch (err) {
+      toast.error("取消失败: " + (err as Error).message);
+    }
+  };
+
   useEffect(() => {
     api.getTrainingTasks().then(setTasks).catch(() => {});
   }, [api]);
@@ -88,8 +100,10 @@ export default function TrainingPage() {
                 <div style={{ fontWeight: 600, fontSize: 12 }}>{t.parentModelName || t.id}</div>
                 <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                   <span className={`badge ${STATUS_BADGE[t.status] || "badge-gray"}`} style={{ fontSize: 9 }}>{STATUS_LABEL[t.status] || t.status}</span>
-                  {t.status !== "running" && (
+                  {t.status !== "running" ? (
                     <button className="btn small danger" onClick={(e) => { e.stopPropagation(); handleDelete(t.id); }} style={{ padding: "2px 6px", fontSize: 9 }}>删除</button>
+                  ) : (
+                    <button className="btn small" onClick={(e) => { e.stopPropagation(); handleCancel(t.id); }} style={{ padding: "2px 6px", fontSize: 9, color: "#c47728" }}>取消</button>
                   )}
                 </div>
               </div>

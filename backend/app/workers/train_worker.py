@@ -313,8 +313,12 @@ def execute_training(
         heartbeat_thread.start()
 
         def check_cancel():
-            session.refresh(task)
-            return bool(task.cancellation_requested)
+            try:
+                with worker_session() as s:
+                    t = s.get(TrainingTask, task_id)
+                    return bool(t.cancellation_requested) if t else False
+            except Exception:
+                return False
 
         trainer = YoloTrainer(training_config, check_cancel=check_cancel)
         result = trainer.train(

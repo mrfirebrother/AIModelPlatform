@@ -1,105 +1,80 @@
-# AGENTS.md
+﻿# AGENTS.md
 
-## Project Overview
+## Stack & Layout
 
-AI model platform for importing root YOLO models, managing dataset snapshots, training detection models, evaluating candidates, and publishing/rolling back models through stable bindings.
+- **Backend**: Python 3.11, FastAPI (`backend/app/main.py:create_app`), SQLAlchemy 2 + Alembic, Celery + Redis, Ultralytics YOLO. Entrypoint `app.main:app` / `uvicorn`.
+- **Frontend**: React 18 + TypeScript + Vite (`frontend/src/main.tsx`), React Router. `VITE_USE_MOCKS=true` switches `src/lib/createApi.ts` to `mockApi`.
+- **Infra**: `infra/docker-compose.yml` — postgres:16, redis:7-alpine, migrate (one-shot `alembic upgrade head`), api, inference (placeholder), worker (`celery -A app.workers.celery_app worker -Q training,evaluation,default --concurrency=1`), scheduler (beat), frontend (node build + nginx). Frontend nginx at `8080` proxies `/api` to `api:8000`; direct API at `8000`.
+- **Dirs**: `backend/app/{api/routes,models,schemas,services,workers,runtime,evaluation,training,storage,observability}` | `backend/alembic/versions` | `frontend/src/{app,features,lib}` | `infra/` | `docs/`
 
-## Tech Stack
+## Commands (exact)
 
-- **Backend**: Python 3.11, FastAPI, SQLAlchemy, Alembic, Celery, Redis, Ultralytics YOLO
-- **Frontend**: React 18, TypeScript, Vite, React Router
-- **Database**: PostgreSQL
-- **Deployment**: Docker Compose + NVIDIA Container Toolkit
-- **Testing**: pytest, Playwright
-
-## Developer Commands
-
-### Backend Tests
+### Backend
 
 ```bash
-cd backend
+# All tests from repo root — must use -c NUL because pyproject.toml/alembic.ini may carry UTF-8 BOM
 python -m pytest -c NUL -p no:cacheprovider backend/tests -q
+# Single file / single test
+python -m pytest -c NUL -p no:cacheprovider backend/tests/unit/test_health.py -q
+python -m pytest -c NUL -p no:cacheprovider backend/tests/unit/test_health.py -k test_gpu_ready_override -q
+# Skip GPU/slow tests
+python -m pytest -c NUL -p no:cacheprovider backend/tests -q -m "not slow"
+# Compile check, BOM check
+python -m compileall backend
+python backend/scripts/verify_bom.py
+# Migrations (needs POSTGRES_URL or POSTGRES_HOST/PORT/DB/USER/PASSWORD env)
+alembic upgrade head
 ```
-
-- Use `-c NUL` because `pyproject.toml` has UTF-8 BOM; standard `pytest` cannot parse it.
-- GPU tests are marked `@pytest.mark.slow` and skipped by default.
-- Unit tests: `backend/tests/unit/`
-- Integration tests: `backend/tests/integration/`
-- E2E tests: `backend/tests/e2e/`
 
 ### Frontend
 
 ```bash
 cd frontend
 npm install
-npm run dev      # Vite dev server on :3000
-npm run build    # TypeScript check + production build
-npm run test     # Playwright tests
+npm run dev      # Vite :3000, proxies /api -> 127.0.0.1:8000 (vite.config.ts)
+npm run build    # tsc -b && vite build
+npm run test     # playwright test — config runs `npx vite --mode mock` automatically
+npx playwright test tests/e2e/ --reporter=list
 ```
 
 ### Docker
 
 ```bash
 cd infra
-docker compose up -d          # Start all services
-docker compose build api --no-cache  # Rebuild backend
-docker compose logs api       # Check API logs
+cp .env.example .env   # edit PLATFORM_API_KEY, POSTGRES_PASSWORD, HOST_*_DIR
+docker compose up -d
+docker compose logs api
+docker compose build api --no-cache
+# Health: api 8000/health/ready, frontend 8080/, postgres 5432, redis 6379
 ```
 
-API proxy is at `http://localhost:8080` (nginx). Dev server at `http://localhost:3000`.
+## Env & Config Quirks
 
-### BOM Verification
+- `backend/app/config.py:Settings` uses `env_file=".env"` with `utf-8-sig` and `extra="ignore"`. If `POSTGRES_URL` is empty it is built from `POSTGRES_HOST/PORT/DB/USER/PASSWORD` via `sqlalchemy.URL.create` (password URL-encoded). `alembic/env.py` reads the same Settings.
+- Default `PLATFORM_API_KEY=change-me` (header `X-API-Key` only — never in URL). Frontend sends `VITE_API_KEY` (defaults to `change-me`) in `createApi.ts`.
+- `GPU_READY`/`WORKER_READY` are boolean readiness overrides consumed by `backend/app/db.py:default_health_checks` — `/health` returns `ready`/`degraded`/`unhealthy` based on postgres+redis (unhealthy) vs gpu+worker (degraded).
+- `HOST_*_DIR` in `.env` bind-mounts `./models,./datasets,./logs,./checkpoints` into containers at `/data/*`.
 
-```bash
-python backend/scripts/verify_bom.py
-```
+## BOM / File Encoding
 
-All Python files must have UTF-8 BOM. Frontend `.ts/.tsx` files must NOT have BOM.
+- Global instruction requires UTF-8 with BOM (`EF BB BF`) for Python files. In practice `verify_bom.py` expects BOM on every text file under `backend/`, `frontend/`, `infra/` (suffixes `.py .ts .tsx .js .json .yml` etc. + `Dockerfile`) and currently reports many missing — run it to see drift.
+- Dockerfile `COPY pyproject.toml alembic.ini` then `pip install .` does **not** strip BOM (check still fails locally); local `pytest`/`alembic` fail on BOM configs without `-c NUL` or a clean copy, so always pass `-c NUL -p no:cacheprovider`.
 
-## Architecture
+## Testing & Fixtures
 
-```
-frontend/         React admin console (mock or real API)
-backend/app/      FastAPI application
-  api/routes/     REST endpoints
-  models/         SQLAlchemy ORM models
-  schemas/        Pydantic request/response
-  services/       Business logic
-  workers/        Celery tasks (training, evaluation, scheduler)
-  runtime/        Model loading and lifecycle
-  evaluation/     Metrics and policy
-  training/       YOLO dataset, trainer, checkpoint
-  storage/        File snapshots
-  observability/  Logs and alerts
-infra/            Docker Compose
-```
+- `backend/tests/conftest.py` only registers `slow` marker — not auto-skipped; use `-m "not slow"` to exclude.
+- Fixtures: `backend/tests/fixtures/build_fixtures.py:FixtureBuilder` (deterministic UUIDs via sha256 seed) and `build_real_fixtures.py`. Unit `backend/tests/unit/`, integration `backend/tests/integration/` (+ `conftest.py` with DB overrides), e2e `backend/tests/e2e/test_closed_loop.py`.
+- Frontend Playwright `frontend/playwright.config.ts`: `baseURL http://localhost:3000`, `webServer: npx vite --mode mock`, `reuseExistingServer: !CI`.
 
-## Key Data Model
+## Data Model (non-obvious)
 
-- `model_nodes`: Immutable model artifacts with parent-child lineage
-- `model_bindings`: Stable project-level binding IDs
-- `model_binding_releases`: Per-binding release history (revision_no monotonic)
-- `dataset_snapshots`: Immutable dataset snapshots
-- `training_tasks` / `training_attempts`: Task queue with lease/fencing
-- `evaluations`: Auto + human review
-- `gpu_resource_leases`: PostgreSQL-backed GPU capacity control
-- `model_residency_plans`: Administrator-desired resident set
+- `model_nodes` immutable with parent lineage; `model_bindings` stable IDs; `model_binding_releases` monotonic `revision_no` per binding; `dataset_snapshots` immutable with `manifest_hash`; `training_tasks`/`training_attempts` with `attempt_lease` fencing; `evaluations` auto+human; `gpu_resource_leases` Postgres-backed; `model_residency_plans`.
 
-## API Key
+## Training / Worker Gotchas
 
-- Header: `X-API-Key`
-- Default: `change-me` (configured via `PLATFORM_API_KEY` env var)
-- Do NOT pass key in URL parameters
+- Celery task `platform.training.run_training` takes task UUID; beat schedule in `backend/app/workers/celery_app.py` (`sweep-pending-evaluations`, `reconcile-leases`, `sweep-queued-tasks` every 60s).
+- Worker must use `backend/app/workers/db_session.py:worker_session()` (own engine/session), not request-scoped `get_db`. `failed` is terminal, no auto-retry; cancellation is cooperative (API sets flag, worker checks before/after). CPU mode skips GPU lease; GPU mode requires `torch.cuda.is_available()`.
 
-## Python File Convention
+## Frontend API Note
 
-All `.py` files under `backend/` must start with UTF-8 BOM (`EF BB BF`). Docker strips BOM from `pyproject.toml` and `alembic.ini` at build time. Frontend files must NOT have BOM.
-
-## Training Worker Notes
-
-- Celery task `platform.training.run_training` receives a task UUID
-- Worker uses `worker_session()` for its own DB session (not request-scoped)
-- CPU mode skips GPU lease; GPU mode requires CUDA availability
-- Manifest hash is verified against stored snapshot hash before training
-- `failed` status is terminal; no automatic retry
-- Cancellation is cooperative: flag set by API, checked by worker before/after training
+- `frontend/src/lib/mockApi.ts` is the mock; `createApi()` picks it when `VITE_USE_MOCKS=true`. Real API base is `VITE_API_URL` (empty = relative). Nginx `frontend/nginx.conf` and Vite proxy both forward `/api`.

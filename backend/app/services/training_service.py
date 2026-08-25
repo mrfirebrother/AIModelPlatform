@@ -67,6 +67,11 @@ def delete_task(session: Session, task_id: UUID) -> None:
         raise ValueError(f"Training task {task_id} not found")
     if task.status == "running":
         raise ValueError("Cannot delete running task")
+    # Delete associated checkpoints and attempts first
+    for attempt in task.attempts:
+        for cp in attempt.checkpoints:
+            session.delete(cp)
+        session.delete(attempt)
     session.delete(task)
     session.flush()
 

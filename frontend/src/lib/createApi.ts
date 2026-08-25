@@ -125,6 +125,7 @@ const realApi: ApiClient = {
   getTrainingTasks: () => fetchJson<any>("/api/training/tasks").then((r) => camelizeKeys(r.tasks ?? r)),
   createTrainingTask: (data) => postJson("/api/training/tasks", data),
   deleteTrainingTask: (id) => fetch(`${API_BASE}/api/training/tasks/${id}`, { method: "DELETE", headers: { "X-API-Key": import.meta.env.VITE_API_KEY || "change-me" } }).then(() => {}),
+  cancelTrainingTask: (id) => postJson(`/api/training/tasks/${id}/cancel`, {}),
   getTrainingLogs: (taskId: string) => fetchJson<any>(`/api/training/${taskId}/logs`),
   getTrainingMetrics: (taskId: string) => fetchJson<any>(`/api/training/${taskId}/metrics`),
   getTrainingCheckpoint: (taskId: string) => fetchJson<any>(`/api/training/${taskId}/checkpoint`),
