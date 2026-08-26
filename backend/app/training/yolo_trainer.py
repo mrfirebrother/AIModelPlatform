@@ -71,10 +71,11 @@ class YoloTrainer:
 
         cancel_cb = _CancelCallback(self._check_cancel) if self._check_cancel else None
         if cancel_cb:
-            try:
-                model.add_callback("on_train_epoch_end", cancel_cb)
-            except Exception:
-                logger.warning("add_callback not supported, cancellation disabled")
+            for evt in ("on_train_batch_end", "on_train_epoch_end"):
+                try:
+                    model.add_callback(evt, cancel_cb)
+                except Exception:
+                    logger.warning("add_callback %s not supported", evt)
 
         try:
             results = model.train(**train_args)
