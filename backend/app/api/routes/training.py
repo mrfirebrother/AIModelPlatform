@@ -237,6 +237,6 @@ def cancel_training_task(
             status="success",
             summary_json={"task_id": str(task.id)},
         )
-        return task
+        return _to_training_task_response(task)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
