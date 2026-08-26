@@ -20,8 +20,22 @@ logger = logging.getLogger(__name__)
 
 @celery_app.task(name="platform.scheduler.sweep_pending_evaluations")
 def sweep_pending_evaluations() -> str:
-    """Placeholder for a future idempotent evaluation enqueue sweep."""
-    return "pending evaluation sweep not implemented"
+    from backend.app.workers.db_session import worker_session
+    from sqlalchemy import select as _select
+    from backend.app.models import Evaluation as _Eval
+    with worker_session() as session:
+        pendings = list(session.execute(_select(_Eval).where(_Eval.auto_status == "pending")).scalars().all())
+        if not pendings:
+            return "no pending evaluations"
+        from backend.app.workers.evaluation_worker import run_evaluation
+        dispatched = 0
+        for ev in pendings:
+            try:
+                run_evaluation.delay(str(ev.id))
+                dispatched += 1
+            except Exception:
+                logger.exception("Failed to dispatch evaluation %s", ev.id)
+        return f"dispatched {dispatched} pending evaluation(s)"
 
 
 @celery_app.task(name="platform.scheduler.reconcile_leases")

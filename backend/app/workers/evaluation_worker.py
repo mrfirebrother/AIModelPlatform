@@ -35,8 +35,42 @@ logger = logging.getLogger(__name__)
 
 @celery_app.task(name="platform.evaluation.run_evaluation")
 def run_evaluation(evaluation_id: str) -> str:
+    from backend.app.workers.db_session import worker_session
+    from uuid import UUID
     logger.info("Starting evaluation for %s", evaluation_id)
-    return f"evaluation {evaluation_id} dispatched"
+    try:
+        ev_id = UUID(evaluation_id)
+    except ValueError:
+        return f"invalid evaluation id {evaluation_id}"
+    with worker_session() as session:
+        ev = session.get(Evaluation, ev_id)
+        if ev is None:
+            return f"evaluation {evaluation_id} not found"
+        if ev.auto_status != "pending":
+            return f"evaluation {evaluation_id} not pending ({ev.auto_status})"
+        model = session.get(ModelNode, ev.model_node_id)
+        if model is None or not Path(model.artifact_path).exists():
+            mark_evaluation_failed(session, ev.id, "Model artifact not found")
+            session.commit()
+            return f"evaluation {evaluation_id} failed: model not found"
+        snap = session.get(DatasetSnapshot, ev.dataset_snapshot_id)
+        if snap is None:
+            mark_evaluation_failed(session, ev.id, "Dataset snapshot not found")
+            session.commit()
+            return f"evaluation {evaluation_id} failed: snapshot not found"
+        manifest = {
+            "train_files": snap.train_manifest_json or [],
+            "val_files": snap.val_manifest_json or [],
+            "test_files": snap.test_manifest_json or [],
+            "nc": len(snap.label_schema.classes) if snap.label_schema else 0,
+            "names": [c.semantic_key for c in snap.label_schema.classes] if snap.label_schema else [],
+        }
+        from backend.app.config import get_settings
+        settings = get_settings()
+        output_dir = Path(settings.log_dir) / "evaluations" / str(ev.id)
+        result = execute_evaluation(session=session, evaluation=ev, model_path=model.artifact_path, dataset_manifest=manifest, output_dir=output_dir)
+        session.commit()
+        return f"evaluation {evaluation_id} {'passed' if result.success and result.mAP50>0 else 'completed'} mAP50={result.mAP50:.4f}"
 
 
 def execute_evaluation(
@@ -173,13 +207,47 @@ def execute_evaluation(
 def _load_dataset_images(
     dataset_manifest: dict[str, Any],
 ) -> list[Any]:
-    return []
+    from PIL import Image
+    images: list[Any] = []
+    for entry in dataset_manifest.get("test_files", []):
+        p = entry.get("image_stored_path")
+        if not p or not Path(p).exists():
+            continue
+        try:
+            img = Image.open(p).convert("RGB")
+            images.append(img)
+        except Exception:
+            continue
+    return images
 
 
 def _load_ground_truths(
     dataset_manifest: dict[str, Any],
 ) -> list[list[dict[str, Any]]]:
-    return []
+    gts: list[list[dict[str, Any]]] = []
+    for entry in dataset_manifest.get("test_files", []):
+        p = entry.get("label_stored_path")
+        boxes: list[dict[str, Any]] = []
+        if p and Path(p).exists():
+            try:
+                for line in Path(p).read_text(encoding="utf-8").strip().splitlines():
+                    if not line.strip():
+                        continue
+                    parts = line.strip().split()
+                    if len(parts) < 5:
+                        continue
+                    cid = int(float(parts[0]))
+                    xc, yc, w, h = map(float, parts[1:5])
+                    # convert yolo normalized xywh to xyxy normalized
+                    x1 = xc - w / 2
+                    y1 = yc - h / 2
+                    x2 = xc + w / 2
+                    y2 = yc + h / 2
+                    boxes.append({"class_id": cid, "bbox": [x1, y1, x2, y2]})
+            except Exception:
+                pass
+        gts.append(boxes)
+    return gts
 
 
 def _extract_class_ids(dataset_manifest: dict[str, Any]) -> list[int]:

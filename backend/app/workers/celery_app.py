@@ -34,6 +34,7 @@ celery_app.conf.update(
     worker_prefetch_multiplier=1,
 )
 
-# Import placeholder tasks after the Celery application exists so Beat can discover them.
+# Import tasks after the Celery application exists so Beat can discover them.
+from . import evaluation_worker as _evaluation_worker  # noqa: E402,F401
 from . import scheduler as _scheduler  # noqa: E402,F401
 from . import train_worker as _train_worker  # noqa: E402,F401
