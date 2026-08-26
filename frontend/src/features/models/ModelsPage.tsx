@@ -201,6 +201,8 @@ function ModelTree({ root, allNodes, onNavigate, onDelete, deleting }: {
                   node={child}
                   allNodes={allNodes}
                   onNavigate={onNavigate}
+                  onDelete={onDelete}
+                  deleting={deleting}
                   isLast={idx === children.length - 1}
                   isFirst={idx === 0}
                 />
@@ -213,16 +215,30 @@ function ModelTree({ root, allNodes, onNavigate, onDelete, deleting }: {
   );
 }
 
-function TreeNodeCard({ node, isRoot, onNavigate }: {
+function TreeNodeCard({ node, isRoot, onNavigate, onDelete, deleting }: {
   node: ModelNode;
   isRoot: boolean;
   onNavigate: (id: string) => void;
+  onDelete?: (id: string) => void;
+  deleting?: string | null;
 }) {
   return (
     <div
       className={`tree-node-card ${isRoot ? "root" : "child"}`}
       onClick={() => onNavigate(node.id)}
+      style={{ position: "relative" }}
     >
+      {onDelete && (
+        <button
+          className="btn small danger"
+          onClick={(e) => { e.stopPropagation(); onDelete(node.id); }}
+          disabled={deleting === node.id}
+          title="删除"
+          style={{ position: "absolute", top: 6, right: 6, padding: "0 6px", fontSize: 12, lineHeight: "18px", minWidth: 0 }}
+        >
+          ×
+        </button>
+      )}
       <div className="node-type">{isRoot ? "根模型" : "子模型"}</div>
       <div className="node-name">{node.name || node.modelFamily || "未命名"}</div>
       <div className="node-meta">{node.modelFamily} · {node.id.slice(0, 8)}...</div>
@@ -230,10 +246,12 @@ function TreeNodeCard({ node, isRoot, onNavigate }: {
   );
 }
 
-function TreeNodeBranch({ node, allNodes, onNavigate, isLast, isFirst }: {
+function TreeNodeBranch({ node, allNodes, onNavigate, onDelete, deleting, isLast, isFirst }: {
   node: ModelNode;
   allNodes: ModelNode[];
   onNavigate: (id: string) => void;
+  onDelete?: (id: string) => void;
+  deleting?: string | null;
   isLast: boolean;
   isFirst: boolean;
 }) {
@@ -249,7 +267,7 @@ function TreeNodeBranch({ node, allNodes, onNavigate, isLast, isFirst }: {
         </svg>
       </div>
 
-      <TreeNodeCard node={node} isRoot={false} onNavigate={onNavigate} />
+      <TreeNodeCard node={node} isRoot={false} onNavigate={onNavigate} onDelete={hasChildren ? undefined : onDelete} deleting={deleting} />
 
       {hasChildren && (
         <div className="tree-subtree">
@@ -261,6 +279,8 @@ function TreeNodeBranch({ node, allNodes, onNavigate, isLast, isFirst }: {
                 node={child}
                 allNodes={allNodes}
                 onNavigate={onNavigate}
+                onDelete={onDelete}
+                deleting={deleting}
                 isLast={idx === children.length - 1}
                 isFirst={idx === 0}
               />

@@ -824,7 +824,7 @@ class TestCancelTaskCancelsAttempt:
                 updated_task = cancel_task(ws, task_id)
                 ws.commit()
                 assert updated_task.cancellation_requested is True
-                assert updated_task.status == "running"
+                assert updated_task.status == "cancelled"
 
             with Session(engine) as verify:
                 attempt_v = verify.get(TrainingAttempt, attempt_id)

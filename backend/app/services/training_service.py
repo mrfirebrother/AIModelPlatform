@@ -205,7 +205,9 @@ def complete_attempt(
     task.status = "completed"
     task.updated_at = now
 
+    model_name = (task.training_config_json or {}).get("model_name") or (task.training_config_json or {}).get("name") or f"{task.model_family}-finetune"
     model = ModelNode(
+        name=str(model_name)[:80],
         parent_id=task.parent_model_node_id,
         dataset_snapshot_id=task.dataset_snapshot_id,
         training_attempt_id=attempt.id,
@@ -273,7 +275,7 @@ def cancel_task(session: Session, task_id: UUID) -> TrainingTask:
     task.cancellation_requested = True
     task.updated_at = now
 
-    if task.status == "queued":
+    if task.status in ("queued", "running", "recovering"):
         task.status = "cancelled"
 
     session.flush()

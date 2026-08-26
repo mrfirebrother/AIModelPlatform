@@ -8,12 +8,21 @@ from typing import Any
 import yaml
 
 
+class DatasetPreparationCancelled(Exception):
+    """Raised when a training task is cancelled while copying its snapshot."""
+
+
 @dataclass
 class YoloDataset:
     root: Path
 
     @classmethod
-    def from_manifest(cls, manifest: dict[str, Any], output_dir: Path) -> YoloDataset:
+    def from_manifest(
+        cls,
+        manifest: dict[str, Any],
+        output_dir: Path,
+        should_cancel=None,
+    ) -> YoloDataset:
         output_dir.mkdir(parents=True, exist_ok=True)
 
         for split in ("train", "val", "test"):
@@ -24,6 +33,8 @@ class YoloDataset:
             key = f"{split}_files"
             files = manifest.get(key, [])
             for entry in files:
+                if should_cancel is not None and should_cancel():
+                    raise DatasetPreparationCancelled()
                 img_src = entry.get("image_stored_path")
                 lbl_src = entry.get("label_stored_path")
                 img_rel = entry.get("image", "")

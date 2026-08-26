@@ -195,9 +195,9 @@ export default function TrainingPage() {
   }, [metrics]);
 
   return (
-    <div style={{ maxWidth: 1200, margin: "0 auto" }}>
+    <>
       {/* toolbar */}
-      <div className="card" style={{ padding: "8px 12px", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 8, minHeight: 40 }}>
+      <div className="top-actions" style={{ marginBottom: 12, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
         <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{ padding: "6px 8px", border: "1px solid #dce8f0", borderRadius: 6, fontSize: 12 }}>
           <option value="all">全部状态</option>
           <option value="running">运行中</option>
@@ -209,8 +209,8 @@ export default function TrainingPage() {
         <input value={searchInput} onChange={(e) => setSearchInput(e.target.value)} placeholder="搜索 模型/数据集" style={{ flex: "1 1 200px", maxWidth: 320, padding: "6px 10px", border: "1px solid #dce8f0", borderRadius: 6, fontSize: 12 }} />
         {search && <button className="btn small" onClick={() => { setSearchInput(""); setSearch(""); }}>清空</button>}
         <div style={{ flex: 1 }} />
-        <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{filtered.length} 条{hasRunning ? " · 自动刷新" : ""}</span>
-        <button className="btn primary small" onClick={() => navigate("/training/create")}>+ 新建</button>
+        <span style={{ fontSize: 11, color: "var(--text-muted)", whiteSpace: "nowrap" }}>{filtered.length} 条{hasRunning ? " · 自动刷新" : ""}</span>
+        <button className="btn primary small" onClick={() => navigate("/training/create")} style={{ marginLeft: "auto" }}>+ 新建</button>
       </div>
 
       {/* table */}
@@ -229,10 +229,10 @@ export default function TrainingPage() {
           return (
             <div key={t.id} onClick={() => setSelectedId(isSel ? null : t.id)} style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 0.8fr 80px", gap: 0, padding: "10px 16px", borderBottom: "1px solid #eef3f8", background: isSel ? "#e7f1fa" : undefined, cursor: "pointer", alignItems: "center" }}>
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontWeight: 600, fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(t as any).parentModelName || t.id.slice(0, 8)}</div>
+                <div style={{ fontWeight: 600, fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(t as any).trainingConfigJson?.modelName || (t as any).trainingConfigJson?.model_name || (t as any).parentModelName || t.id.slice(0, 8)}</div>
                 <div style={{ color: "var(--text-muted)", fontSize: 9, fontFamily: "Courier New, monospace", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{taskDatasetName(t)}</div>
               </div>
-              <div style={{ fontSize: 11 }}>{taskEpochs(t)} 轮 · {(t as any).modelFamily || "YOLOv8"} · {(t as any).trainingConfigJson?.device || "cpu"}</div>
+              <div style={{ fontSize: 11 }} title={`${(t as any).modelFamily || "YOLOv8"} · ${(t as any).trainingConfigJson?.device || "cpu"}`}>{taskEpochs(t)} 轮 · {(t as any).trainingConfigJson?.device || "cpu"}</div>
               <div>
                 <span className={`badge ${STATUS_BADGE[t.status] || "badge-gray"}`} style={{ fontSize: 9 }}>{STATUS_LABEL[t.status] || t.status}</span>
               </div>
@@ -362,7 +362,7 @@ export default function TrainingPage() {
           </div>
         </>
       )}
-    </div>
+    </>
   );
 }
 

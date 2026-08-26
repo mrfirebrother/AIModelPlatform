@@ -1,5 +1,7 @@
 ﻿from __future__ import annotations
 
+import threading
+from pathlib import Path
 from typing import Any
 from uuid import UUID
 
@@ -8,11 +10,31 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from backend.app.schemas import CAMEL_CONFIG
-from backend.app.api.dependencies import get_db, verify_api_key
+from backend.app.api.dependencies import get_db, get_effective_settings, verify_api_key
 from backend.app.observability.operation_log import log_operation
 from backend.app.services import training_service
 
 router = APIRouter(prefix="/api/training", tags=["training"])
+
+
+def _revoke_active_training_task(task_id: UUID) -> None:
+    """Best-effort terminate without delaying the cancel HTTP response."""
+    try:
+        from backend.app.workers.celery_app import celery_app
+
+        active_by_worker = celery_app.control.inspect(timeout=1).active() or {}
+        for active_tasks in active_by_worker.values():
+            for active_task in active_tasks or []:
+                if (
+                    active_task.get("name") == "platform.training.run_training"
+                    and str(task_id) in str(active_task.get("args", ""))
+                ):
+                    celery_app.control.revoke(
+                        active_task["id"], terminate=True, signal="SIGTERM"
+                    )
+    except Exception:
+        # Cooperative cancellation and the database state remain authoritative.
+        return
 
 
 class TrainingTaskCreate(BaseModel):
@@ -229,6 +251,15 @@ def cancel_training_task(
 ) -> Any:
     try:
         task = training_service.cancel_task(db, task_id)
+        settings = get_effective_settings()
+        cancel_marker = Path(settings.checkpoint_dir) / str(task_id) / "cancel.requested"
+        cancel_marker.parent.mkdir(parents=True, exist_ok=True)
+        cancel_marker.touch()
+        threading.Thread(
+            target=_revoke_active_training_task,
+            args=(task_id,),
+            daemon=True,
+        ).start()
         log_operation(
             db,
             operation_type="training.task.cancel",

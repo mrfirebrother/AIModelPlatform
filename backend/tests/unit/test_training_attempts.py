@@ -395,6 +395,7 @@ class TestCancelTask:
         session.refresh(task)
         session.refresh(attempt)
         assert task.cancellation_requested is True
+        assert task.status == "cancelled"
         assert attempt.status == "running"
 
 

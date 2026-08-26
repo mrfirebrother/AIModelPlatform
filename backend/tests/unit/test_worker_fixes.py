@@ -239,7 +239,7 @@ class TestDispatchRaceCondition:
 # Fix 4: Safe cancellation
 # ──────────────────────────────────────────────────────────────────────
 class TestSafeCancellation:
-    def test_cancel_running_task_sets_cancellation_requested_only(
+    def test_cancel_running_task_marks_task_cancelled_immediately(
         self, session: Session
     ) -> None:
         snapshot = _make_snapshot(session)
@@ -263,6 +263,7 @@ class TestSafeCancellation:
         session.refresh(task)
         session.refresh(attempt)
         assert task.cancellation_requested is True
+        assert task.status == "cancelled"
         assert attempt.status == "running"
 
     def test_cancel_queued_task_marks_cancelled_directly(

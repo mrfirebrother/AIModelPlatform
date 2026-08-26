@@ -84,7 +84,9 @@ def list_models(
     db: Session = Depends(get_db),
     _key: str = Depends(verify_api_key),
 ) -> Any:
-    models = list_root_models(db)
+    from sqlalchemy import select as _select
+    from backend.app.models import ModelNode as _ModelNode
+    models = list(db.execute(_select(_ModelNode)).scalars().all())
     return ModelNodeListResponse(models=models, total=len(models))
 
 

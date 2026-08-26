@@ -199,6 +199,7 @@ class TestCancelDuringTraining:
         session.commit()
         session.refresh(attempt)
         assert task.cancellation_requested is True
+        assert task.status == "cancelled"
         assert attempt.status == "running"
 
 

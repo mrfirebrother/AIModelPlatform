@@ -16,7 +16,7 @@ from backend.app.training.resource_scheduler import (
     InsufficientGPUError,
     ResourceScheduler,
 )
-from backend.app.training.yolo_dataset import YoloDataset
+from backend.app.training.yolo_dataset import DatasetPreparationCancelled, YoloDataset
 from backend.app.training.yolo_trainer import YoloTrainer, TrainResult
 from backend.app.storage.artifacts import compute_file_hash
 from backend.app.services.resource_lease import heartbeat_lease
@@ -292,6 +292,8 @@ def execute_training(
     scheduler = ResourceScheduler(session=session, cpu_mode=cpu_mode)
     lease = None
     heartbeat_thread: _HeartbeatThread | None = None
+    cancel_watcher: _CancelWatcher | None = None
+    trainer: YoloTrainer | None = None
 
     try:
         if device != "cpu":
@@ -302,10 +304,54 @@ def execute_training(
             )
             session.flush()
 
+        def read_cancel_requested() -> bool:
+            cancel_marker = (
+                Path(get_settings().checkpoint_dir)
+                / str(task.id)
+                / "cancel.requested"
+            )
+            if cancel_marker.exists():
+                return True
+            try:
+                with worker_session() as s:
+                    t = s.get(TrainingTask, task_id)
+                    return bool(t.cancellation_requested) if t else False
+            except Exception:
+                return False
+
+        cancel_watcher = _CancelWatcher(read_cancel_requested)
+        cancel_watcher.start()
+
+        cancel_marker = (
+            Path(get_settings().checkpoint_dir)
+            / str(task.id)
+            / "cancel.requested"
+        )
+
+        def is_cancel_requested() -> bool:
+            return cancel_watcher.cancelled or cancel_marker.exists()
+
+        if is_cancel_requested():
+            return TrainResult(success=False, epochs_completed=0, best_model_path=None, latest_model_path=None, error="Cancelled before start")
+
         dataset_dir = output_dir / "dataset"
         checkpoint_dir = output_dir / "checkpoints"
 
-        YoloDataset.from_manifest(dataset_manifest, dataset_dir)
+        try:
+            YoloDataset.from_manifest(
+                dataset_manifest, dataset_dir, should_cancel=is_cancel_requested
+            )
+        except DatasetPreparationCancelled:
+            return TrainResult(
+                success=False,
+                epochs_completed=0,
+                best_model_path=None,
+                latest_model_path=None,
+                error="Training cancelled",
+            )
+
+        if is_cancel_requested():
+            return TrainResult(success=False, epochs_completed=0, best_model_path=None, latest_model_path=None, error="Cancelled during dataset preparation")
 
         try:
             attempt_heartbeat(session, attempt.id, attempt.lease_token)
@@ -324,15 +370,9 @@ def execute_training(
         )
         heartbeat_thread.start()
 
-        def check_cancel():
-            try:
-                with worker_session() as s:
-                    t = s.get(TrainingTask, task_id)
-                    return bool(t.cancellation_requested) if t else False
-            except Exception:
-                return False
-
-        trainer = YoloTrainer(training_config, check_cancel=check_cancel)
+        trainer = YoloTrainer(
+            training_config, check_cancel=is_cancel_requested
+        )
         result = trainer.train(
             dataset_dir, checkpoint_dir, parent_model_path=parent_model_path
         )
@@ -357,10 +397,14 @@ def execute_training(
         )
 
     finally:
-        trainer.stop()  # Stop subprocess if still running
+        if trainer is not None:
+            trainer.stop()  # Stop subprocess if still running
         if heartbeat_thread is not None:
             heartbeat_thread.stop()
             heartbeat_thread.join(timeout=5)
+        if cancel_watcher is not None:
+            cancel_watcher.stop()
+            cancel_watcher.join(timeout=5)
         if lease is not None:
             scheduler.release_gpu(attempt.id)
 
@@ -415,6 +459,30 @@ class _HeartbeatThread(threading.Thread):
                 logger.warning(
                     "Heartbeat failed for attempt %s", self._attempt_id
                 )
+
+
+class _CancelWatcher(threading.Thread):
+    """Poll cancellation independently so long file copies remain interruptible."""
+
+    def __init__(self, read_cancel, interval: float = 1.0) -> None:
+        super().__init__(daemon=True)
+        self._read_cancel = read_cancel
+        self._interval = interval
+        self._stop_event = threading.Event()
+        self.cancelled = False
+
+    def stop(self) -> None:
+        self._stop_event.set()
+
+    def run(self) -> None:
+        while not self._stop_event.is_set():
+            try:
+                if self._read_cancel():
+                    self.cancelled = True
+                    return
+            except Exception:
+                logger.warning("Cancellation poll failed")
+            self._stop_event.wait(self._interval)
 
 
 @celery_app.task(name="platform.training.recover_attempt")
