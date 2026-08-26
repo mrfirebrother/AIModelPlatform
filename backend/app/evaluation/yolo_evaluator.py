@@ -5,7 +5,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from ultralytics import YOLO
+try:
+    from ultralytics import YOLO
+except ImportError:
+    YOLO = None  # type: ignore[assignment,misc]
 
 from backend.app.evaluation.metrics import (
     compute_mAP,
@@ -55,7 +58,11 @@ class YoloEvaluator:
         if self._model is not None:
             return self._model_info
 
-        model = YOLO(model_path)
+        yolo_class = YOLO
+        if yolo_class is None:
+            from ultralytics import YOLO as yolo_class
+
+        model = yolo_class(model_path)
         class_names: dict[int, str] = {}
         if hasattr(model, "names") and model.names:
             class_names = dict(model.names)

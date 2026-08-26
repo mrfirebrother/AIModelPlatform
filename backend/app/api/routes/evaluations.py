@@ -36,12 +36,37 @@ class EvaluationResponse(BaseModel):
     human_status: str
     evaluation_policy_json: dict
     auto_metrics_json: dict
+    model_name: str
+    dataset_name: str
+    metrics: dict[str, Any] | None = None
+    test_image_count: int = 0
+    created_at: str
+    last_error: str | None = None
     model_config = {"from_attributes": True}
 
 
 class EvaluationListResponse(BaseModel):
     evaluations: list[EvaluationResponse]
     total: int
+
+
+def _to_evaluation_response(ev: Any) -> EvaluationResponse:
+    metrics = ev.auto_metrics_json or {}
+    return EvaluationResponse(
+        id=ev.id,
+        model_node_id=ev.model_node_id,
+        dataset_snapshot_id=ev.dataset_snapshot_id,
+        auto_status=ev.auto_status,
+        human_status=ev.human_status,
+        evaluation_policy_json=ev.evaluation_policy_json or {},
+        auto_metrics_json=metrics,
+        model_name=(ev.model_node.name or ev.model_node.model_family),
+        dataset_name=ev.dataset_snapshot.dataset.name,
+        metrics=metrics or None,
+        test_image_count=int(metrics.get("num_images", 0)),
+        created_at=ev.created_at.isoformat(),
+        last_error=ev.last_error,
+    )
 
 
 @router.post("", response_model=EvaluationResponse, status_code=status.HTTP_201_CREATED)
@@ -66,7 +91,7 @@ def submit_evaluation(
             status="success",
             summary_json={"evaluation_id": str(ev.id)},
         )
-        return ev
+        return _to_evaluation_response(ev)
     except ValueError as exc:
         log_operation(
             db,
@@ -95,7 +120,7 @@ def list_evaluations(
 
     evaluations = list(db.execute(select(Evaluation)).scalars().all())
     return EvaluationListResponse(
-        evaluations=[EvaluationResponse.model_validate(e) for e in evaluations],
+        evaluations=[_to_evaluation_response(e) for e in evaluations],
         total=len(evaluations),
     )
 
@@ -109,7 +134,7 @@ def get_evaluation(
     ev = evaluation_service.get_evaluation(db, evaluation_id)
     if ev is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Evaluation not found")
-    return ev
+    return _to_evaluation_response(ev)
 
 
 @router.post("/sessions", response_model=EvaluationSessionResponse, status_code=status.HTTP_201_CREATED)

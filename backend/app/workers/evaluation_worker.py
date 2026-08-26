@@ -89,11 +89,6 @@ def execute_evaluation(
         evaluation = mark_evaluation_running(session, evaluation.id)
         session.commit()
 
-        lease = scheduler.reserve_gpu(
-            attempt_id=evaluation.id,
-            required_memory_mb=required_memory_mb,
-        )
-
         evaluator = YoloEvaluator(
             confidence_threshold=0.25,
             iou_threshold=0.45,
@@ -102,7 +97,10 @@ def execute_evaluation(
         evaluator.load_model(model_path)
 
         images = _load_dataset_images(dataset_manifest)
-        ground_truths = _load_ground_truths(dataset_manifest)
+        ground_truths = _load_ground_truths(
+            dataset_manifest,
+            image_sizes=[image.size for image in images],
+        )
         class_ids = _extract_class_ids(dataset_manifest)
 
         eval_result = evaluator.evaluate(
@@ -125,6 +123,9 @@ def execute_evaluation(
             "precision": eval_result.precision,
             "recall": eval_result.recall,
             "per_class": eval_result.per_class,
+            "num_images": eval_result.num_images,
+            "num_predictions": eval_result.num_predictions,
+            "num_ground_truths": eval_result.num_ground_truths,
         }
 
         test_classes = set(eval_result.per_class.keys())
@@ -223,11 +224,13 @@ def _load_dataset_images(
 
 def _load_ground_truths(
     dataset_manifest: dict[str, Any],
+    image_sizes: list[tuple[int, int]] | None = None,
 ) -> list[list[dict[str, Any]]]:
     gts: list[list[dict[str, Any]]] = []
-    for entry in dataset_manifest.get("test_files", []):
+    for index, entry in enumerate(dataset_manifest.get("test_files", [])):
         p = entry.get("label_stored_path")
         boxes: list[dict[str, Any]] = []
+        width, height = image_sizes[index] if image_sizes and index < len(image_sizes) else (1, 1)
         if p and Path(p).exists():
             try:
                 for line in Path(p).read_text(encoding="utf-8").strip().splitlines():
@@ -239,10 +242,10 @@ def _load_ground_truths(
                     cid = int(float(parts[0]))
                     xc, yc, w, h = map(float, parts[1:5])
                     # convert yolo normalized xywh to xyxy normalized
-                    x1 = xc - w / 2
-                    y1 = yc - h / 2
-                    x2 = xc + w / 2
-                    y2 = yc + h / 2
+                    x1 = (xc - w / 2) * width
+                    y1 = (yc - h / 2) * height
+                    x2 = (xc + w / 2) * width
+                    y2 = (yc + h / 2) * height
                     boxes.append({"class_id": cid, "bbox": [x1, y1, x2, y2]})
             except Exception:
                 pass
