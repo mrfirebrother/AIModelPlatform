@@ -267,6 +267,7 @@ export interface ApiClient {
   gpuLoadModel(modelName: string, memoryMb: number): Promise<GpuLoadResponse>;
   gpuUnloadModel(modelName: string): Promise<GpuUnloadResponse>;
   reviewEvaluation(id: string, status: string): Promise<void>;
+  inferWithModel(evaluationId: string, file: File): Promise<{ detections: { class_name: string; confidence: number; bbox: number[]; class_id: number }[]; latency_ms: number; image_width: number; image_height: number }>;
   getOperationLogs(skip?: number, limit?: number): Promise<OperationLogsResponse>;
   getOperationErrors(skip?: number, limit?: number): Promise<OperationLogsResponse>;
   getOperationStatus(): Promise<OperationStatusResponse>;

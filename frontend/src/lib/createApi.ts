@@ -178,6 +178,18 @@ const realApi: ApiClient = {
     })),
   reviewEvaluation: (id, status) =>
     postJson(`/api/evaluations/${id}/review`, { human_status: status }),
+  inferWithModel: (evaluationId, file) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return new Promise<any>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", `${API_BASE}/api/evaluations/${evaluationId}/infer`);
+      xhr.setRequestHeader("X-API-Key", import.meta.env.VITE_API_KEY || "change-me");
+      xhr.onload = () => { if (xhr.status >= 200 && xhr.status < 300) resolve(JSON.parse(xhr.responseText)); else reject(new Error(`${xhr.status}: ${xhr.statusText}`)); };
+      xhr.onerror = () => reject(new Error("Network error"));
+      xhr.send(fd);
+    });
+  },
   getOperationLogs: (skip = 0, limit = 20) =>
     fetchJson<any>(`/api/operations/logs?skip=${skip}&limit=${limit}`),
   getOperationErrors: (skip = 0, limit = 50) =>

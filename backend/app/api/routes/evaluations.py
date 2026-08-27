@@ -1,15 +1,16 @@
 ﻿from __future__ import annotations
 
+import base64
 import uuid as _uuid
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from pydantic import BaseModel
 from backend.app.schemas import CAMEL_CONFIG
 from sqlalchemy.orm import Session
 
-from backend.app.api.dependencies import get_db, verify_api_key
+from backend.app.api.dependencies import get_db, get_effective_settings, verify_api_key
 from backend.app.evaluation.policy import EvaluationPolicy
 from backend.app.observability.operation_log import log_operation
 from backend.app.schemas.evaluation_session import (
@@ -166,6 +167,84 @@ def review_evaluation(
         return _to_evaluation_response(ev)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+
+class InferResult(BaseModel):
+    class_name: str
+    confidence: float
+    bbox: list[float]
+    class_id: int
+
+
+class InferResponse(BaseModel):
+    detections: list[InferResult]
+    latency_ms: float
+    image_width: int
+    image_height: int
+
+
+@router.post("/{evaluation_id}/infer", response_model=InferResponse)
+async def infer_with_model(
+    evaluation_id: UUID,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    _key: str = Depends(verify_api_key),
+) -> Any:
+    ev = evaluation_service.get_evaluation(db, evaluation_id)
+    if ev is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Evaluation not found")
+
+    model_node = ev.model_node
+    if model_node is None or not model_node.artifact_path:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Model artifact not found")
+
+    import time
+    start = time.time()
+
+    image_bytes = await file.read()
+    if len(image_bytes) == 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Empty image")
+
+    try:
+        from PIL import Image
+        import io
+
+        img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        image_width, image_height = img.size
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid image: {exc}")
+
+    try:
+        from ultralytics import YOLO
+        model = YOLO(model_node.artifact_path)
+        results = model(img, verbose=False)
+
+        detections = []
+        if results and len(results) > 0:
+            r = results[0]
+            class_names = dict(r.names) if hasattr(r, "names") and r.names else {}
+            if hasattr(r, "boxes") and r.boxes is not None:
+                for i in range(len(r.boxes.xyxy)):
+                    box = r.boxes.xyxy[i].tolist()
+                    conf = float(r.boxes.conf[i])
+                    cls_id = int(r.boxes.cls[i])
+                    det = InferResult(
+                        class_name=class_names.get(cls_id, str(cls_id)),
+                        confidence=round(conf, 4),
+                        bbox=[round(v, 2) for v in box],
+                        class_id=cls_id,
+                    )
+                    detections.append(det)
+
+        latency = round((time.time() - start) * 1000, 1)
+        return InferResponse(
+            detections=detections,
+            latency_ms=latency,
+            image_width=image_width,
+            image_height=image_height,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Inference failed: {exc}")
 
 
 @router.post("/sessions", response_model=EvaluationSessionResponse, status_code=status.HTTP_201_CREATED)

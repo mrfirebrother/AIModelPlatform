@@ -550,6 +550,18 @@ export const mockApi: ApiClient = {
   async reviewEvaluation(_id: string, _status: string) {
     await delay(200);
   },
+  async inferWithModel(_evaluationId: string, _file: File) {
+    await delay(500);
+    return {
+      detections: [
+        { class_name: "裂纹", confidence: 0.92, bbox: [120, 80, 320, 250], class_id: 0 },
+        { class_name: "裂纹", confidence: 0.78, bbox: [50, 180, 200, 300], class_id: 0 },
+      ],
+      latency_ms: 320,
+      image_width: 640,
+      image_height: 480,
+    };
+  },
 
   async getOperationLogs(skip = 0, limit = 20) {
     await delay(60);

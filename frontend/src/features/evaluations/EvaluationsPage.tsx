@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { createApi } from "../../lib/createApi";
 import type { Evaluation } from "../../lib/api";
 
@@ -46,6 +46,10 @@ export default function EvaluationsPage() {
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [inferLoading, setInferLoading] = useState(false);
+  const [inferResult, setInferResult] = useState<any>(null);
+  const [inferError, setInferError] = useState<string | null>(null);
+  const [inferImageUrl, setInferImageUrl] = useState<string | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setSearch(searchInput.trim().toLowerCase()), 300);
@@ -76,10 +80,76 @@ export default function EvaluationsPage() {
     return list;
   }, [evals, statusFilter, search, sortDir]);
 
+  const handleInfer = async (file: File) => {
+    if (!selectedId) return;
+    setInferLoading(true);
+    setInferError(null);
+    setInferResult(null);
+    const url = URL.createObjectURL(file);
+    setInferImageUrl(url);
+    try {
+      const result = await api.inferWithModel(selectedId, file);
+      setInferResult(result);
+    } catch (err) {
+      setInferError((err as Error).message);
+    }
+    setInferLoading(false);
+  };
+
   const current = evals.find((e) => e.id === selectedId) || null;
   const pendingCount = evals.filter((e) => e.autoStatus === "pending").length;
 
   const statusBadge = (s: string) => s === "pending" ? "badge-orange" : s === "auto_passed" || s === "passed" ? "badge-blue" : s === "approved" ? "badge-green" : "badge-red";
+
+function InferResultCanvas({ result, imageUrl }: { result: any; imageUrl: string }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const imgRef = useRef<HTMLImageElement | null>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !imageUrl) return;
+
+    const img = new Image();
+    img.onload = () => {
+      imgRef.current = img;
+      const maxW = canvas.parentElement?.clientWidth || 448;
+      const maxH = 360;
+      let scale = Math.min(1, maxW / img.width, maxH / img.height);
+      scale = Math.max(scale, 0.15);
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+      const COLORS = ["#36a1bd", "#1a8a75", "#d77d59", "#1766ad", "#c44", "#8b5cf6"];
+      for (const det of (result.detections || [])) {
+        const [x1, y1, x2, y2] = det.bbox;
+        const sx = (x1 / result.image_width) * canvas.width;
+        const sy = (y1 / result.image_height) * canvas.height;
+        const sw = ((x2 - x1) / result.image_width) * canvas.width;
+        const sh = ((y2 - y1) / result.image_height) * canvas.height;
+
+        const color = COLORS[det.class_id % COLORS.length];
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(sx, sy, sw, sh);
+
+        const label = `${det.class_name} ${(det.confidence * 100).toFixed(0)}%`;
+        ctx.font = "bold 10px sans-serif";
+        const tw = ctx.measureText(label).width;
+        ctx.fillStyle = color;
+        ctx.fillRect(sx, sy - 14, tw + 6, 14);
+        ctx.fillStyle = "#fff";
+        ctx.fillText(label, sx + 3, sy - 3);
+      }
+    };
+    img.src = imageUrl;
+  }, [result, imageUrl]);
+
+  return <div style={{ display: "flex", justifyContent: "center", padding: "4px 0" }}><canvas ref={canvasRef} style={{ borderRadius: 6, border: "1px solid #e6eef6", background: "#f0f0f0" }} /></div>;
+}
 
   return (
     <>
@@ -238,7 +308,39 @@ export default function EvaluationsPage() {
                 </div>
               )}
 
-              {/* Actions */}
+              {/* Test Inference */}
+              <div style={{ background: "#fff", border: "1px solid #e6eef6", borderRadius: 8, padding: "12px 14px" }}>
+                <div style={{ fontWeight: 600, fontSize: 12, marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
+                  <div style={{ width: 3, height: 14, background: "var(--accent-cyan)", borderRadius: 2 }} />
+                  测试推理
+                </div>
+                <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 8 }}>上传图片，用该模型做检测，查看标注效果</div>
+                <label style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 12px", border: "1px dashed #dce8f0", borderRadius: 6, cursor: "pointer", fontSize: 11, color: "var(--text-muted)", background: "#fafbfc", transition: "all 0.2s" }}>
+                  <input type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) handleInfer(f); }} />
+                  选择图片上传推理
+                </label>
+                {inferLoading && <div style={{ marginTop: 8, fontSize: 11, color: "var(--text-muted)" }}>推理中...</div>}
+                {inferError && <div style={{ marginTop: 8, fontSize: 11, color: "#c44" }}>{inferError}</div>}
+                {inferResult && inferImageUrl && (
+                  <div style={{ marginTop: 10 }}>
+                    <InferResultCanvas result={inferResult} imageUrl={inferImageUrl} />
+                    <div style={{ marginTop: 6, fontSize: 10, color: "var(--text-muted)", display: "flex", gap: 12 }}>
+                      <span>耗时 {inferResult.latency_ms}ms</span>
+                      <span>{inferResult.detections.length} 个检测框</span>
+                    </div>
+                    {inferResult.detections.length > 0 && (
+                      <div style={{ marginTop: 6, maxHeight: 120, overflowY: "auto" }}>
+                        {inferResult.detections.map((d: any, i: number) => (
+                          <div key={i} style={{ fontSize: 10, display: "flex", justifyContent: "space-between", padding: "2px 0", borderBottom: "1px solid #f0f0f0" }}>
+                            <span style={{ fontWeight: 600 }}>{d.class_name}</span>
+                            <span style={{ color: "var(--text-muted)" }}>{(d.confidence * 100).toFixed(1)}%</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
 
             </div>
           </div>
