@@ -1,8 +1,51 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { createApi } from "../../lib/createApi";
 import { useToast } from "../../lib/toast";
 import type { ModelNode } from "../../lib/api";
+import dagre from "dagre";
+
+const NODE_W = 160;
+const NODE_H = 80;
+const ROOT_W = 200;
+const ROOT_H = 90;
+
+function buildLayout(nodes: ModelNode[], rootId: string) {
+  const g = new dagre.graphlib.Graph({ directed: true });
+  g.setGraph({ rankdir: "TB", ranksep: 60, nodesep: 30, marginx: 20, marginy: 20 });
+  g.setDefaultEdgeLabel(() => ({}));
+
+  const map = new Map(nodes.map((n) => [n.id, n]));
+  for (const n of nodes) {
+    const isRoot = n.parentId === null;
+    g.setNode(n.id, { width: isRoot ? ROOT_W : NODE_W, height: isRoot ? ROOT_H : NODE_H, label: n.id });
+  }
+  for (const n of nodes) {
+    if (n.parentId && map.has(n.parentId)) {
+      g.setEdge(n.parentId, n.id);
+    }
+  }
+
+  dagre.layout(g);
+  const positions = new Map<string, { x: number; y: number }>();
+  for (const n of nodes) {
+    const d = g.node(n.id);
+    if (d) positions.set(n.id, { x: d.x - (n.parentId === null ? ROOT_W : NODE_W) / 2, y: d.y - (n.parentId === null ? ROOT_H : NODE_H) / 2 });
+  }
+
+  const edges: { from: string; to: string }[] = [];
+  g.edges().forEach((e: any) => { edges.push({ from: e.v, to: e.w }); });
+
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const p of positions.values()) {
+    minX = Math.min(minX, p.x);
+    minY = Math.min(minY, p.y);
+    maxX = Math.max(maxX, p.x + ROOT_W);
+    maxY = Math.max(maxY, p.y + ROOT_H);
+  }
+
+  return { positions, edges, width: maxX - minX + 40, height: maxY - minY + 40 };
+}
 
 export default function ModelsPage() {
   const api = useMemo(() => createApi(), []);
@@ -35,11 +78,11 @@ export default function ModelsPage() {
         taskType: "object_detection",
         modelFamily: "yolo",
       });
-      toast.success("\u6a21\u578b\u5df2\u5bfc\u5165");
+      toast.success("模型已导入");
       setShowImport(false);
       loadNodes();
     } catch (err) {
-      toast.error("\u5bfc\u5165\u5931\u8d25: " + (err as Error).message);
+      toast.error("导入失败: " + (err as Error).message);
     }
     setUploading(false);
     setUploadPct(null);
@@ -134,7 +177,7 @@ export default function ModelsPage() {
       )}
 
       {filteredRoots.map((root) => (
-        <ModelTree
+        <ModelLineage
           key={root.id}
           root={root}
           allNodes={nodes}
@@ -149,7 +192,7 @@ export default function ModelsPage() {
   );
 }
 
-function ModelTree({ root, allNodes, onNavigate, onDelete, deleting }: {
+function ModelLineage({ root, allNodes, onNavigate, onDelete, deleting }: {
   root: ModelNode;
   allNodes: ModelNode[];
   onNavigate: (id: string) => void;
@@ -158,7 +201,18 @@ function ModelTree({ root, allNodes, onNavigate, onDelete, deleting }: {
 }) {
   const byParent = (pid: string) => allNodes.filter((n) => n.parentId === pid);
   const children = byParent(root.id);
-  const hasChildren = children.length > 0;
+
+  const { positions, edges, width, height } = useMemo(
+    () => buildLayout(allNodes, root.id),
+    [allNodes, root.id],
+  );
+
+  const nodeById = useMemo(() => new Map(allNodes.map((n) => [n.id, n])), [allNodes]);
+  const nodeW = (id: string) => (nodeById.get(id)?.parentId === null ? ROOT_W : NODE_W);
+  const nodeH = (id: string) => (nodeById.get(id)?.parentId === null ? ROOT_H : NODE_H);
+
+  const statusBadge = (s: string) => s === "approved" ? "badge-green" : s === "candidate" ? "badge-orange" : "badge-gray";
+  const statusLabel = (s: string) => s === "approved" ? "已批准" : s === "candidate" ? "候选" : s;
 
   return (
     <div className="model-tree-card">
@@ -168,126 +222,85 @@ function ModelTree({ root, allNodes, onNavigate, onDelete, deleting }: {
           <div className="tree-card-subtitle">{root.name || root.modelFamily} · {root.modelFamily}</div>
         </div>
         <div className="tree-card-actions">
-          <span className={`badge badge-${root.status === "approved" ? "green" : root.status === "candidate" ? "orange" : "gray"}`}>
-            {root.status === "approved" ? "已批准" : root.status === "candidate" ? "候选" : root.status}
-          </span>
-          {!hasChildren && (
-            <button
-              className="btn small danger"
-              onClick={() => onDelete(root.id)}
-              disabled={deleting === root.id}
-              style={{ marginLeft: 8 }}
-            >
+          <span className={`badge ${statusBadge(root.status)}`}>{statusLabel(root.status)}</span>
+          {children.length === 0 && (
+            <button className="btn small danger" onClick={() => onDelete(root.id)} disabled={deleting === root.id} style={{ marginLeft: 8 }}>
               {deleting === root.id ? "删除中..." : "删除"}
             </button>
           )}
         </div>
       </div>
 
-      <div className="tree-visual">
-        <TreeNodeCard
-          node={root}
-          isRoot={true}
-          onNavigate={onNavigate}
-        />
-
-        {children.length > 0 && (
-          <div className="tree-subtree">
-            <div className="tree-connector-vertical" />
-            <div className="tree-children-row">
-              {children.map((child, idx) => (
-                <TreeNodeBranch
-                  key={child.id}
-                  node={child}
-                  allNodes={allNodes}
-                  onNavigate={onNavigate}
-                  onDelete={onDelete}
-                  deleting={deleting}
-                  isLast={idx === children.length - 1}
-                  isFirst={idx === 0}
+      <div style={{ overflowX: "auto", padding: "24px 20px" }}>
+        <div style={{ position: "relative", width, height, margin: "0 auto" }}>
+          {/* Edges */}
+          <svg style={{ position: "absolute", top: 0, left: 0, width, height, pointerEvents: "none" }}>
+            {edges.map(({ from, to }) => {
+              const fp = positions.get(from);
+              const tp = positions.get(to);
+              if (!fp || !tp) return null;
+              const fx = fp.x + nodeW(from) / 2;
+              const fy = fp.y + nodeH(from);
+              const tx = tp.x + nodeW(to) / 2;
+              const ty = tp.y;
+              const my = (fy + ty) / 2;
+              return (
+                <path
+                  key={`${from}-${to}`}
+                  d={`M ${fx} ${fy} L ${fx} ${my} L ${tx} ${my} L ${tx} ${ty}`}
+                  stroke="#2d83c5"
+                  strokeWidth="2"
+                  fill="none"
                 />
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
+              );
+            })}
+          </svg>
 
-function TreeNodeCard({ node, isRoot, onNavigate, onDelete, deleting }: {
-  node: ModelNode;
-  isRoot: boolean;
-  onNavigate: (id: string) => void;
-  onDelete?: (id: string) => void;
-  deleting?: string | null;
-}) {
-  return (
-    <div
-      className={`tree-node-card ${isRoot ? "root" : "child"}`}
-      onClick={() => onNavigate(node.id)}
-      style={{ position: "relative" }}
-    >
-      {onDelete && (
-        <button
-          className="btn small danger"
-          onClick={(e) => { e.stopPropagation(); onDelete(node.id); }}
-          disabled={deleting === node.id}
-          title="删除"
-          style={{ position: "absolute", top: 6, right: 6, padding: "0 6px", fontSize: 12, lineHeight: "18px", minWidth: 0 }}
-        >
-          ×
-        </button>
-      )}
-      <div className="node-type">{isRoot ? "根模型" : "子模型"}</div>
-      <div className="node-name">{node.name || node.modelFamily || "未命名"}</div>
-      <div className="node-meta">{node.modelFamily} · {node.id.slice(0, 8)}...</div>
-    </div>
-  );
-}
-
-function TreeNodeBranch({ node, allNodes, onNavigate, onDelete, deleting, isLast, isFirst }: {
-  node: ModelNode;
-  allNodes: ModelNode[];
-  onNavigate: (id: string) => void;
-  onDelete?: (id: string) => void;
-  deleting?: string | null;
-  isLast: boolean;
-  isFirst: boolean;
-}) {
-  const byParent = (pid: string) => allNodes.filter((n) => n.parentId === pid);
-  const children = byParent(node.id);
-  const hasChildren = children.length > 0;
-
-  return (
-    <div className="tree-branch">
-      <div className="tree-branch-connector">
-        <svg width="100%" height="30" viewBox="0 0 100 30" preserveAspectRatio="none">
-          <path d="M 50 0 L 50 30" stroke="#2d83c5" strokeWidth="2" fill="none" />
-        </svg>
-      </div>
-
-      <TreeNodeCard node={node} isRoot={false} onNavigate={onNavigate} onDelete={hasChildren ? undefined : onDelete} deleting={deleting} />
-
-      {hasChildren && (
-        <div className="tree-subtree">
-          <div className="tree-connector-vertical" />
-          <div className="tree-children-row">
-            {children.map((child, idx) => (
-              <TreeNodeBranch
-                key={child.id}
-                node={child}
-                allNodes={allNodes}
-                onNavigate={onNavigate}
-                onDelete={onDelete}
-                deleting={deleting}
-                isLast={idx === children.length - 1}
-                isFirst={idx === 0}
-              />
-            ))}
-          </div>
+          {/* Nodes */}
+          {allNodes.map((n) => {
+            const pos = positions.get(n.id);
+            if (!pos) return null;
+            const isRoot = n.parentId === null;
+            return (
+              <div
+                key={n.id}
+                onClick={() => onNavigate(n.id)}
+                style={{
+                  position: "absolute",
+                  left: pos.x,
+                  top: pos.y,
+                  width: isRoot ? ROOT_W : NODE_W,
+                  padding: isRoot ? "12px 16px" : "10px 14px",
+                  borderRadius: 8,
+                  cursor: "pointer",
+                  transition: "all 0.2s",
+                  textAlign: "center",
+                  background: isRoot ? "linear-gradient(135deg, #1766ad 0%, #0f4f8b 100%)" : "white",
+                  color: isRoot ? "white" : undefined,
+                  border: isRoot ? "2px solid #0d4a7a" : "2px solid #d3e2ec",
+                  boxShadow: isRoot ? "0 4px 12px rgba(23,102,173,0.3)" : "0 2px 8px rgba(0,0,0,0.06)",
+                  zIndex: 1,
+                }}
+              >
+                {!isRoot && children.some((c) => c.id !== n.id) && (
+                  <button
+                    className="btn small danger"
+                    onClick={(e) => { e.stopPropagation(); onDelete(n.id); }}
+                    disabled={deleting === n.id}
+                    title="删除"
+                    style={{ position: "absolute", top: 4, right: 4, padding: "0 4px", fontSize: 11, lineHeight: "16px", minWidth: 0 }}
+                  >
+                    ×
+                  </button>
+                )}
+                <div style={{ fontSize: 8, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 3, color: isRoot ? "rgba(255,255,255,0.7)" : "var(--primary)" }}>{isRoot ? "根模型" : "子模型"}</div>
+                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 2 }}>{n.name || n.modelFamily || "未命名"}</div>
+                <div style={{ fontSize: 8, color: isRoot ? "rgba(255,255,255,0.7)" : "var(--text-muted)" }}>{n.modelFamily} · {n.id.slice(0, 8)}</div>
+              </div>
+            );
+          })}
         </div>
-      )}
+      </div>
     </div>
   );
 }

@@ -137,6 +137,37 @@ def get_evaluation(
     return _to_evaluation_response(ev)
 
 
+@router.post("/{evaluation_id}/review", response_model=EvaluationResponse)
+def review_evaluation(
+    evaluation_id: UUID,
+    payload: dict,
+    db: Session = Depends(get_db),
+    _key: str = Depends(verify_api_key),
+) -> Any:
+    human_status = payload.get("human_status") or payload.get("humanStatus")
+    if human_status not in ("approved", "rejected"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="human_status must be 'approved' or 'rejected'")
+
+    try:
+        ev = evaluation_service.record_human_review(
+            db,
+            evaluation_id,
+            reviewer="admin",
+            conclusion=human_status,
+        )
+        log_operation(
+            db,
+            operation_type="evaluation.review",
+            resource_type="evaluation",
+            resource_id=ev.id,
+            status="success",
+            summary_json={"evaluation_id": str(ev.id), "human_status": human_status},
+        )
+        return _to_evaluation_response(ev)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+
 @router.post("/sessions", response_model=EvaluationSessionResponse, status_code=status.HTTP_201_CREATED)
 def create_evaluation_session(
     payload: EvaluationSessionCreate,

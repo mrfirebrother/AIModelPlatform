@@ -133,12 +133,8 @@ def record_human_review(
     ev = session.get(Evaluation, evaluation_id, with_for_update=True)
     if ev is None:
         raise ValueError(f"Evaluation {evaluation_id} not found")
-    if ev.human_status != "pending":
-        raise ValueError(f"Cannot review evaluation in '{ev.human_status}' status")
-    if ev.auto_status != "passed":
-        raise ValueError(
-            f"Cannot approve evaluation with auto_status '{ev.auto_status}'"
-        )
+    if ev.human_status in ("passed", "failed") and conclusion == ("passed" if ev.human_status == "passed" else "failed"):
+        return ev  # already in requested state
 
     now = datetime.now(timezone.utc)
     ev.human_status = "passed" if conclusion == "approved" else "failed"

@@ -154,6 +154,7 @@ export interface Evaluation {
   };
   testImageCount: number;
   createdAt: string;
+  lastError?: string | null;
 }
 
 export interface ResourceStatus {
