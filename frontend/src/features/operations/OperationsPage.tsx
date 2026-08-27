@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import { createApi } from "../../lib/createApi";
 
 interface OperationLogEntry {
@@ -28,287 +28,119 @@ interface OperationStatusResponse {
   checks: SystemChecks;
 }
 
+function formatTime(iso?: string): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mi = String(d.getMinutes()).padStart(2, "0");
+  return `${mm}-${dd} ${hh}:${mi}`;
+}
+
+const OP_LABELS: Record<string, string> = {
+  "training.task.create": "创建训练任务",
+  "training.task.delete": "删除训练任务",
+  "training.task.cancel": "取消训练任务",
+  "training.task.dispatch": "调度训练任务",
+  "model.create": "导入模型",
+  "model.update_status": "更新模型状态",
+  "model.delete": "删除模型",
+  "evaluation.create": "创建评估",
+  "evaluation.review": "人工评审",
+  "evaluation.session.create": "创建评估会话",
+};
+
+const OP_COLORS: Record<string, string> = {
+  "training.task.create": "#1766ad",
+  "training.task.delete": "#c44",
+  "training.task.cancel": "#d77d59",
+  "model.create": "#1a8a75",
+  "model.delete": "#c44",
+  "evaluation.create": "#36a1bd",
+  "evaluation.review": "#8b5cf6",
+};
+
 export default function OperationsPage() {
   const api = useMemo(() => createApi(), []);
   const [status, setStatus] = useState<OperationStatusResponse | null>(null);
   const [logs, setLogs] = useState<OperationLogEntry[]>([]);
   const [logsTotal, setLogsTotal] = useState(0);
-  const [errors, setErrors] = useState<OperationLogEntry[]>([]);
-  const [errorsTotal, setErrorsTotal] = useState(0);
   const [logPage, setLogPage] = useState(0);
-  const pageSize = 20;
+  const pageSize = 10;
 
   useEffect(() => {
     fetch("/api/operations/status", {
       headers: { "X-API-Key": import.meta.env.VITE_API_KEY || "change-me" },
-    })
-      .then((r) => r.json())
-      .then((data: OperationStatusResponse) => setStatus(data))
-      .catch(() => {});
+    }).then((r) => r.json()).then((d: OperationStatusResponse) => setStatus(d)).catch(() => {});
   }, []);
 
   useEffect(() => {
     fetch(`/api/operations/logs?skip=${logPage * pageSize}&limit=${pageSize}`, {
       headers: { "X-API-Key": import.meta.env.VITE_API_KEY || "change-me" },
-    })
-      .then((r) => r.json())
-      .then((data: OperationLogsResponse) => {
-        setLogs(data.items);
-        setLogsTotal(data.total);
-      })
-      .catch(() => {});
+    }).then((r) => r.json()).then((d: OperationLogsResponse) => { setLogs(d.items); setLogsTotal(d.total); }).catch(() => {});
   }, [logPage]);
 
-  useEffect(() => {
-    fetch("/api/operations/errors?limit=50", {
-      headers: { "X-API-Key": import.meta.env.VITE_API_KEY || "change-me" },
-    })
-      .then((r) => r.json())
-      .then((data: OperationLogsResponse) => {
-        setErrors(data.items);
-        setErrorsTotal(data.total);
-      })
-      .catch(() => {});
-  }, []);
-
-  const statusLabel: Record<string, string> = {
-    ready: "健康",
-    degraded: "降级",
-    unhealthy: "异常",
-  };
-
-  const statusColor: Record<string, string> = {
-    ready: "var(--accent-green)",
-    degraded: "var(--accent-orange)",
-    unhealthy: "#b33",
-  };
-
-  const checkLabel: Record<string, string> = {
-    postgres: "PostgreSQL",
-    redis: "Redis",
-    gpu: "GPU",
-    worker: "Worker",
-  };
+  const checkItems = [
+    { key: "postgres", label: "PostgreSQL", icon: "⛁" },
+    { key: "redis", label: "Redis", icon: "⚡" },
+    { key: "gpu", label: "GPU", icon: "▣" },
+    { key: "worker", label: "Worker", icon: "⚙" },
+  ];
 
   return (
     <>
-      <section className="kpis">
-        <div className="kpi">
-          <div className="kpi-label">系统状态</div>
-          <strong>
-            {status ? statusLabel[status.status] || status.status : "加载中..."}
-            <em
-              style={{
-                color: status ? statusColor[status.status] : undefined,
-              }}
-            >
-              {status?.status === "ready" ? "正常运行" : ""}
-            </em>
-          </strong>
-          <div className="kpi-foot">服务健康检查</div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-label">操作日志</div>
-          <strong>
-            {String(logsTotal).padStart(2, "0")}
-            <em>最近操作</em>
-          </strong>
-          <div className="kpi-foot">全部操作记录</div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-label">异常记录</div>
-          <strong>
-            {String(errorsTotal).padStart(2, "0")}
-            <em style={{ color: errorsTotal > 0 ? "#b33" : undefined }}>
-              {errorsTotal > 0 ? "需要关注" : "无异常"}
-            </em>
-          </strong>
-          <div className="kpi-foot">错误和异常</div>
-        </div>
-      </section>
-
-      <section className="page-grid">
-        <div className="card">
-          <div className="card-head">
-            <div>
-              <div className="card-title">系统健康</div>
-              <div className="card-kicker">服务组件状态</div>
-            </div>
-          </div>
-          <div className="card-body">
-            {status
-              ? Object.entries(status.checks).map(([key, ok]) => (
-                  <div
-                    key={key}
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "1fr auto",
-                      gap: 10,
-                      padding: "10px 0",
-                      borderBottom: "1px solid #dce8f0",
-                    }}
-                  >
-                    <div style={{ color: "var(--text)", fontSize: 12 }}>
-                      {checkLabel[key] || key}
-                    </div>
-                    <span
-                      style={{
-                        fontSize: 9,
-                        fontFamily: "Courier New, monospace",
-                        color: ok ? "var(--accent-green)" : "#b33",
-                      }}
-                    >
-                      {ok ? "正常" : "异常"}
-                    </span>
-                  </div>
-                ))
-              : (
-                  <div style={{ padding: "12px 0", color: "var(--text-muted)", fontSize: 11 }}>
-                    加载中...
-                  </div>
-                )}
-          </div>
-        </div>
-
-        <div className="card">
-          <div className="card-head">
-            <div>
-              <div className="card-title">操作日志</div>
-              <div className="card-kicker">
-                共 {logsTotal} 条 · 第 {logPage + 1} 页
+      <section style={{ display: "grid", gridTemplateColumns: "minmax(200px, 1fr) 2fr", gap: 12, alignItems: "start" }}>
+        {/* System Health */}
+        <div className="card" style={{ padding: "12px 16px" }}>
+          <div style={{ fontWeight: 600, fontSize: 11, marginBottom: 8 }}>系统健康</div>
+          {status ? checkItems.map(({ key, label }) => {
+            const ok = status.checks[key as keyof SystemChecks];
+            return (
+              <div key={key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 0" }}>
+                <span style={{ fontSize: 11 }}>{label}</span>
+                <span className={`badge ${ok ? "badge-green" : "badge-red"}`} style={{ fontSize: 9 }}>{ok ? "正常" : "异常"}</span>
               </div>
+            );
+          }) : <div style={{ fontSize: 11, color: "var(--text-muted)" }}>加载中...</div>}
+        </div>
+
+        {/* Operation Logs */}
+        <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+          <div style={{ padding: "14px 18px", borderBottom: "1px solid #e6eef6", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div>
+              <div style={{ fontWeight: 600, fontSize: 12 }}>操作日志</div>
+              <div style={{ fontSize: 10, color: "var(--text-muted)" }}>共 {logsTotal} 条 · 第 {logPage + 1} 页</div>
             </div>
-            <div style={{ display: "flex", gap: 8 }}>
-              <button
-                className="card-action"
-                disabled={logPage === 0}
-                onClick={() => setLogPage((p) => Math.max(0, p - 1))}
-              >
-                上一页
-              </button>
-              <button
-                className="card-action"
-                disabled={(logPage + 1) * pageSize >= logsTotal}
-                onClick={() => setLogPage((p) => p + 1)}
-              >
-                下一页
-              </button>
+            <div style={{ display: "flex", gap: 6 }}>
+              <button className="btn small" disabled={logPage === 0} onClick={() => setLogPage((p) => Math.max(0, p - 1))} style={{ fontSize: 10 }}>上一页</button>
+              <button className="btn small" disabled={(logPage + 1) * pageSize >= logsTotal} onClick={() => setLogPage((p) => p + 1)} style={{ fontSize: 10 }}>下一页</button>
             </div>
           </div>
           <div>
             {logs.length === 0 ? (
-              <div style={{ padding: "12px 16px", color: "var(--text-muted)", fontSize: 11 }}>
-                暂无操作日志
-              </div>
-            ) : (
-              logs.map((log) => (
-                <div
-                  key={log.id}
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr auto",
-                    gap: 10,
-                    padding: "10px 16px",
-                    borderBottom: "1px solid #dce8f0",
-                  }}
-                >
-                  <div>
-                    <div style={{ color: "var(--text)", fontSize: 12 }}>
-                      {log.operationType}
-                    </div>
-                    <div
-                      style={{
-                        marginTop: 3,
-                        color: "var(--text-muted)",
-                        fontSize: 9,
-                        fontFamily: "Courier New, monospace",
-                      }}
-                    >
-                      {log.actor || "system"} · {new Date(log.createdAt).toLocaleString("zh-CN")}
-                    </div>
+              <div style={{ padding: "32px 18px", textAlign: "center", color: "var(--text-muted)", fontSize: 11 }}>暂无操作日志</div>
+            ) : logs.map((log) => (
+              <div key={log.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 18px", borderBottom: "1px solid #f0f4f8" }}>
+                <div style={{ width: 4, height: 24, borderRadius: 2, background: log.status === "success" ? OP_COLORS[log.operationType] || "var(--accent-green)" : "#b33", flexShrink: 0 }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontWeight: 600, fontSize: 12 }}>{OP_LABELS[log.operationType] || log.operationType}</span>
+                    <span style={{ fontSize: 9, color: "var(--text-muted)", fontFamily: "Courier New, monospace" }}>{log.operationType}</span>
                   </div>
-                  <span
-                    style={{
-                      fontSize: 9,
-                      fontFamily: "Courier New, monospace",
-                      textTransform: "uppercase",
-                      color:
-                        log.status === "success"
-                          ? "var(--accent-green)"
-                          : "#b33",
-                      alignSelf: "center",
-                    }}
-                  >
-                    {log.status === "success" ? "成功" : "失败"}
-                  </span>
+                  <div style={{ marginTop: 2, fontSize: 10, color: "var(--text-muted)" }}>{log.actor || "system"} · {formatTime(log.createdAt)}</div>
                 </div>
-              ))
-            )}
+                <span className={`badge ${log.status === "success" ? "badge-green" : "badge-red"}`} style={{ fontSize: 9 }}>{log.status === "success" ? "成功" : "失败"}</span>
+              </div>
+            ))}
           </div>
-        </div>
-
-        <div className="card">
-          <div className="card-head">
-            <div>
-              <div className="card-title">异常记录</div>
-              <div className="card-kicker">共 {errorsTotal} 条</div>
+          {logsTotal > pageSize && (
+            <div style={{ padding: "12px 18px", borderTop: "1px solid #e6eef6", display: "flex", justifyContent: "center", gap: 8 }}>
+              <button className="btn small" disabled={logPage === 0} onClick={() => setLogPage((p) => Math.max(0, p - 1))}>上一页</button>
+              <span style={{ fontSize: 11, lineHeight: "28px" }}>{logPage + 1} / {Math.ceil(logsTotal / pageSize)}</span>
+              <button className="btn small" disabled={(logPage + 1) * pageSize >= logsTotal} onClick={() => setLogPage((p) => p + 1)}>下一页</button>
             </div>
-          </div>
-          <div>
-            {errors.length === 0 ? (
-              <div style={{ padding: "12px 16px", color: "var(--text-muted)", fontSize: 11 }}>
-                暂无异常记录
-              </div>
-            ) : (
-              errors.map((err) => (
-                <div
-                  key={err.id}
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr auto",
-                    gap: 10,
-                    padding: "10px 16px",
-                    borderBottom: "1px solid #dce8f0",
-                  }}
-                >
-                  <div>
-                    <div style={{ color: "var(--text)", fontSize: 12 }}>
-                      {err.operationType}
-                    </div>
-                    <div
-                      style={{
-                        marginTop: 3,
-                        color: "#b33",
-                        fontSize: 10,
-                      }}
-                    >
-                      {err.errorSummary || "未知错误"}
-                    </div>
-                    <div
-                      style={{
-                        marginTop: 2,
-                        color: "var(--text-muted)",
-                        fontSize: 9,
-                        fontFamily: "Courier New, monospace",
-                      }}
-                    >
-                      {new Date(err.createdAt).toLocaleString("zh-CN")}
-                    </div>
-                  </div>
-                  <span
-                    style={{
-                      fontSize: 9,
-                      fontFamily: "Courier New, monospace",
-                      color: "#b33",
-                      alignSelf: "center",
-                    }}
-                  >
-                    错误
-                  </span>
-                </div>
-              ))
-            )}
-          </div>
+          )}
         </div>
       </section>
     </>

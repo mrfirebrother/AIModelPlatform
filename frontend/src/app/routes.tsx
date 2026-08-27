@@ -14,15 +14,12 @@ import OperationsPage from "../features/operations/OperationsPage";
 const navItems = [
   { to: "/dashboard", label: "总览", icon: "▦" },
   { to: "/models", label: "模型谱系", icon: "◈" },
-  { to: "/bindings", label: "模型关联", icon: "◇" },
   { to: "/datasets", label: "数据集", icon: "◉" },
   { to: "/training", label: "训练任务", icon: "▶" },
   { to: "/evaluations", label: "模型评估", icon: "◆" },
 ];
 
 const navItems2 = [
-  { to: "/releases", label: "发布管理", icon: "↗" },
-  { to: "/resources", label: "资源控制", icon: "≡" },
   { to: "/operations", label: "运维管理", icon: "⛭" },
 ];
 
