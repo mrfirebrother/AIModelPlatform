@@ -1,4 +1,4 @@
-/* ===== Blue-white engineering admin theme ===== */
+﻿/* ===== Blue-white engineering admin theme ===== */
 :root {
   --primary: #1766ad;
   --primary-dark: #0f4f8b;
@@ -285,6 +285,19 @@ a:hover {
   background: var(--surface);
   box-shadow: var(--shadow);
   min-height: 300px;
+}
+
+.grid-card {
+  border: 1px solid var(--surface-border);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  min-height: 0;
+  height: 84px;
+  max-height: 96px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
 .card-head {

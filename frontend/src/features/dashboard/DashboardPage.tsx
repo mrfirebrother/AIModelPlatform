@@ -48,7 +48,7 @@ export default function DashboardPage() {
           { k: "已完成", v: completed.length, sub: completed.length ? "次训练" : "暂无完成", icon: "✓", bg: completed.length ? "rgba(26,138,117,0.08)" : "rgba(0,0,0,0.02)", bd: completed.length ? "#1a8a75" : "#d8e5ef" },
           { k: "评估", v: evals.length, sub: evals.filter((e: any) => e.autoStatus === "passed").length + " 通过", icon: "◎", bg: evals.length ? "rgba(139,92,246,0.06)" : "rgba(0,0,0,0.02)", bd: evals.length ? "#8b5cf6" : "#d8e5ef" },
         ].map(({ k, v, sub, icon, bg, bd }) => (
-          <div key={k} className="card" style={{ padding: "8px 12px", borderTop: `2px solid ${bd}`, background: `linear-gradient(180deg, ${bg} 0%, #fff 60%)` }}>
+          <div key={k} className="grid-card" style={{ padding: "8px 12px", borderTop: `2px solid ${bd}`, background: `linear-gradient(180deg, ${bg} 0%, #fff 60%)` }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
               <span style={{ fontSize: 9, color: "var(--text-muted)", letterSpacing: "0.04em" }}>{k}</span>
               <span style={{ width: 18, height: 18, borderRadius: 4, background: bd, color: "#fff", display: "grid", placeItems: "center", fontSize: 9 }}>{icon}</span>
