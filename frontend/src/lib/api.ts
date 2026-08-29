@@ -8,6 +8,7 @@ export type EvalStatus = "pending" | "auto_passed" | "approved" | "rejected";
 
 export interface ModelNode {
   id: string;
+  code?: string;
   name: string;
   parentId: string | null;
   taskType: string;
@@ -151,6 +152,7 @@ export interface Evaluation {
     recall: number;
     mAP50: number;
     mAP50_95: number;
+    per_class?: Record<string, { recall: number; precision: number }>;
   };
   testImageCount: number;
   createdAt: string;
@@ -268,6 +270,7 @@ export interface ApiClient {
   gpuUnloadModel(modelName: string): Promise<GpuUnloadResponse>;
   reviewEvaluation(id: string, status: string): Promise<void>;
   inferWithModel(evaluationId: string, file: File): Promise<{ detections: { class_name: string; confidence: number; bbox: number[]; class_id: number }[]; latency_ms: number; image_width: number; image_height: number }>;
+  inferWithModelCode(modelCode: string, file: File): Promise<{ model_code: string; model_name: string; detections: { class_name: string; confidence: number; bbox: number[]; class_id: number }[]; latency_ms: number; image_width: number; image_height: number; overlay_image?: string | null }>;
   getOperationLogs(skip?: number, limit?: number): Promise<OperationLogsResponse>;
   getOperationErrors(skip?: number, limit?: number): Promise<OperationLogsResponse>;
   getOperationStatus(): Promise<OperationStatusResponse>;

@@ -19,6 +19,7 @@ class ModelNodeCreate(BaseModel):
     model_family: str = Field(..., max_length=128)
     artifact_path: str = Field(..., max_length=1024)
     artifact_hash: str = Field(default="", max_length=255)
+    code: str = Field(default="", max_length=20)
     name: str = Field(default="", max_length=255)
     parent_id: UUID | None = None
     label_schema_id: UUID | None = None
@@ -32,6 +33,7 @@ class ModelNodeCreate(BaseModel):
 
 class ModelNodeResponse(BaseModel):
     id: UUID
+    code: str = ""
     name: str = ""
     parent_id: UUID | None
     label_schema_id: UUID | None

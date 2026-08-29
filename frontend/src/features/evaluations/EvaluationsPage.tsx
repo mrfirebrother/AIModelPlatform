@@ -287,13 +287,44 @@ function InferResultCanvas({ result, imageUrl }: { result: any; imageUrl: string
                     </div>
                   )}
                 </div>
-              ) : (
+              ) : null}
+
+              {/* Per-Class Metrics */}
+              {current.metrics?.per_class && Object.keys(current.metrics.per_class).length > 0 && (
                 <div style={{ background: "#fff", border: "1px solid #e6eef6", borderRadius: 8, padding: "12px 14px" }}>
-                  <div style={{ fontWeight: 600, fontSize: 12, marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
-                    <div style={{ width: 3, height: 14, background: "var(--text-muted)", borderRadius: 2 }} />
-                    评估指标
+                  <div style={{ fontWeight: 600, fontSize: 12, marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
+                    <div style={{ width: 3, height: 14, background: "var(--primary)", borderRadius: 2 }} />
+                    分类指标
                   </div>
-                  <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "8px 0" }}>{(current as any).autoStatus === "failed" ? "评估失败，无指标数据" : "等待自动评估"}</div>
+                  <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 8 }}>各类别的 Precision / Recall，识别问题类别</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 4 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "60px 1fr 1fr", gap: 8, fontSize: 9, color: "var(--text-muted)", fontWeight: 600, padding: "0 2px" }}>
+                      <span>类别</span><span>Precision</span><span>Recall</span>
+                    </div>
+                    {Object.entries(current.metrics.per_class as Record<string, { recall: number; precision: number }>).map(([clsId, cls]) => {
+                      const p = cls.precision * 100;
+                      const r = cls.recall * 100;
+                      const pColor = p >= 80 ? "var(--accent-green)" : p >= 50 ? "var(--accent-orange)" : "#c44";
+                      const rColor = r >= 80 ? "var(--accent-green)" : r >= 50 ? "var(--accent-orange)" : "#c44";
+                      return (
+                        <div key={clsId} style={{ display: "grid", gridTemplateColumns: "60px 1fr 1fr", gap: 8, alignItems: "center", padding: "5px 2px", borderBottom: "1px solid #f0f4f8" }}>
+                          <span style={{ fontSize: 10, fontWeight: 600 }}>类别 {clsId}</span>
+                          <div>
+                            <div style={{ fontSize: 10, fontWeight: 600, color: pColor }}>{p.toFixed(1)}%</div>
+                            <div style={{ height: 3, background: "#e6eef6", borderRadius: 2, overflow: "hidden", marginTop: 2 }}>
+                              <div style={{ height: "100%", width: `${Math.min(p, 100)}%`, background: pColor, borderRadius: 2 }} />
+                            </div>
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 10, fontWeight: 600, color: rColor }}>{r.toFixed(1)}%</div>
+                            <div style={{ height: 3, background: "#e6eef6", borderRadius: 2, overflow: "hidden", marginTop: 2 }}>
+                              <div style={{ height: "100%", width: `${Math.min(r, 100)}%`, background: rColor, borderRadius: 2 }} />
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
 

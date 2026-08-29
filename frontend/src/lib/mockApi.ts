@@ -22,6 +22,7 @@ function delay(ms: number): Promise<void> {
 const modelNodes: ModelNode[] = [
   {
     id: "m-root-yolo",
+    code: "M001",
     name: "YOLO 基础权重",
     parentId: null,
     taskType: "object_detection",
@@ -33,6 +34,7 @@ const modelNodes: ModelNode[] = [
   },
   {
     id: "m-concrete",
+    code: "M002",
     name: "混凝土损伤",
     parentId: "m-root-yolo",
     taskType: "object_detection",
@@ -45,6 +47,7 @@ const modelNodes: ModelNode[] = [
   },
   {
     id: "m-bridge-a-concrete",
+    code: "M003",
     name: "A 桥 / 混凝土",
     parentId: "m-concrete",
     taskType: "object_detection",
@@ -560,6 +563,21 @@ export const mockApi: ApiClient = {
       latency_ms: 320,
       image_width: 640,
       image_height: 480,
+    };
+  },
+  async inferWithModelCode(_modelCode: string, _file: File) {
+    await delay(500);
+    return {
+      model_code: "M001",
+      model_name: "yolov10n",
+      detections: [
+        { class_name: "裂纹", confidence: 0.92, bbox: [120, 80, 320, 250], class_id: 0 },
+        { class_name: "裂纹", confidence: 0.78, bbox: [50, 180, 200, 300], class_id: 0 },
+      ],
+      latency_ms: 320,
+      image_width: 640,
+      image_height: 480,
+      overlay_image: null,
     };
   },
 

@@ -72,7 +72,7 @@ export default function TrainingCreatePage() {
             <select value={parentId} onChange={(e) => setParentId(e.target.value)}>
               {models.map((m) => (
                 <option key={m.id} value={m.id}>
-                  {m.name} ({m.id})
+                  {m.name} ({m.code || m.id.slice(0, 8)})
                 </option>
               ))}
             </select>

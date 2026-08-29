@@ -206,7 +206,9 @@ def complete_attempt(
     task.updated_at = now
 
     model_name = (task.training_config_json or {}).get("model_name") or (task.training_config_json or {}).get("name") or f"{task.model_family}-finetune"
+    from backend.app.repositories.model_repository import _generate_model_code
     model = ModelNode(
+        code=_generate_model_code(session),
         name=str(model_name)[:80],
         parent_id=task.parent_model_node_id,
         dataset_snapshot_id=task.dataset_snapshot_id,

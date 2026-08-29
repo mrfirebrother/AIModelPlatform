@@ -9,6 +9,23 @@ from sqlalchemy.orm import Session
 from backend.app.models import LabelSchema, LabelSchemaClass, ModelNode
 
 
+def _generate_model_code(session: Session) -> str:
+    """Generate next model code like M001, M002, ..."""
+    from sqlalchemy import func as _func
+
+    last_code = session.execute(
+        select(ModelNode.code).order_by(ModelNode.code.desc()).limit(1)
+    ).scalar()
+    if last_code and last_code.startswith("M"):
+        try:
+            num = int(last_code[1:]) + 1
+        except ValueError:
+            num = 1
+    else:
+        num = 1
+    return f"M{num:03d}"
+
+
 def create_model_node(
     session: Session,
     *,
@@ -16,6 +33,7 @@ def create_model_node(
     model_family: str,
     artifact_path: str,
     artifact_hash: str,
+    code: str = "",
     name: str = "",
     parent_id: UUID | None = None,
     label_schema_id: UUID | None = None,
@@ -34,7 +52,10 @@ def create_model_node(
         schema = session.get(LabelSchema, label_schema_id)
         if schema is None:
             raise ValueError(f"Label schema {label_schema_id} not found")
+    if not code:
+        code = _generate_model_code(session)
     model = ModelNode(
+        code=code,
         name=name,
         task_type=task_type,
         model_family=model_family,

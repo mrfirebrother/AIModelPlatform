@@ -282,7 +282,7 @@ function ModelLineage({ root, allNodes, onNavigate, onDelete, deleting }: {
                   zIndex: 1,
                 }}
               >
-                {!isRoot && children.some((c) => c.id !== n.id) && (
+                {!isRoot && byParent(n.id).length === 0 && (
                   <button
                     className="btn small danger"
                     onClick={(e) => { e.stopPropagation(); onDelete(n.id); }}
@@ -295,7 +295,7 @@ function ModelLineage({ root, allNodes, onNavigate, onDelete, deleting }: {
                 )}
                 <div style={{ fontSize: 8, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 3, color: isRoot ? "rgba(255,255,255,0.7)" : "var(--primary)" }}>{isRoot ? "根模型" : "子模型"}</div>
                 <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 2 }}>{n.name || n.modelFamily || "未命名"}</div>
-                <div style={{ fontSize: 8, color: isRoot ? "rgba(255,255,255,0.7)" : "var(--text-muted)" }}>{n.modelFamily} · {n.id.slice(0, 8)}</div>
+                <div style={{ fontSize: 8, color: isRoot ? "rgba(255,255,255,0.7)" : "var(--text-muted)" }}>{n.code || n.id.slice(0, 8)} · {n.modelFamily}</div>
               </div>
             );
           })}

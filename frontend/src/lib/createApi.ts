@@ -29,8 +29,17 @@ async function deleteJson<T>(path: string): Promise<T> {
     method: "DELETE",
     headers: { "X-API-Key": import.meta.env.VITE_API_KEY || "change-me" },
   });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-  return res.json();
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      const body = await res.json();
+      detail = body.detail || detail;
+    } catch {
+      try { detail = await res.text(); } catch { /* ignore */ }
+    }
+    throw new Error(`${res.status}: ${detail}`);
+  }
+  try { return await res.json(); } catch { return {} as T; }
 }
 
 async function uploadFile<T>(
@@ -186,6 +195,18 @@ const realApi: ApiClient = {
       xhr.open("POST", `${API_BASE}/api/evaluations/${evaluationId}/infer`);
       xhr.setRequestHeader("X-API-Key", import.meta.env.VITE_API_KEY || "change-me");
       xhr.onload = () => { if (xhr.status >= 200 && xhr.status < 300) resolve(JSON.parse(xhr.responseText)); else reject(new Error(`${xhr.status}: ${xhr.statusText}`)); };
+      xhr.onerror = () => reject(new Error("Network error"));
+      xhr.send(fd);
+    });
+  },
+  inferWithModelCode: (modelCode, file) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return new Promise<any>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", `${API_BASE}/api/models/${modelCode}/infer`);
+      xhr.setRequestHeader("X-API-Key", import.meta.env.VITE_API_KEY || "change-me");
+      xhr.onload = () => { if (xhr.status >= 200 && xhr.status < 300) resolve(JSON.parse(xhr.responseText)); else { let detail = xhr.statusText; try { detail = JSON.parse(xhr.responseText).detail || detail; } catch {} reject(new Error(`${xhr.status}: ${detail}`)); } };
       xhr.onerror = () => reject(new Error("Network error"));
       xhr.send(fd);
     });

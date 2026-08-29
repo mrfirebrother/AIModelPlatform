@@ -80,7 +80,7 @@ export default function DashboardPage() {
               return (
                 <div key={t.id} onClick={() => navigate("/training")} style={{ padding: "8px 14px", borderBottom: "1px solid #f0f4f8", cursor: "pointer" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                    <span style={{ fontWeight: 600, fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1 }}>{(t as any).parentModelName || t.id.slice(0, 8)}</span>
+                    <span style={{ fontWeight: 600, fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1 }}>{(t as any).trainingConfigJson?.modelName || (t as any).parentModelName || t.id.slice(0, 8)}</span>
                     <span className={`badge ${t.status === "running" ? "badge-cyan" : t.status === "completed" ? "badge-green" : t.status === "failed" ? "badge-red" : "badge-orange"}`} style={{ fontSize: 9, flexShrink: 0, marginLeft: 8 }}>
                       {t.status === "running" ? "运行中" : t.status === "completed" ? "已完成" : t.status === "failed" ? "失败" : "排队中"}
                     </span>

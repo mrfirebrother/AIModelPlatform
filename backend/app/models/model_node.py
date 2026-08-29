@@ -23,8 +23,10 @@ class ModelNode(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             "training_attempt_id",
             name="uq_model_node_id_training_attempt",
         ),
+        UniqueConstraint("code", name="uq_model_node_code"),
     )
 
+    code: Mapped[str] = mapped_column(String(20), nullable=False, unique=True)
     parent_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("model_nodes.id", ondelete="RESTRICT")
     )
@@ -67,6 +69,7 @@ class ModelNode(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 install_immutable_guard(
     ModelNode,
     {
+        "code",
         "parent_id",
         "label_schema_id",
         "dataset_snapshot_id",

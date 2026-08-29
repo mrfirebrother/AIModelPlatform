@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { createApi } from "../../lib/createApi";
 import { useToast } from "../../lib/toast";
 import type { Dataset } from "../../lib/api";
@@ -44,13 +44,31 @@ export default function DatasetsPage() {
     setUploading(true);
     try {
       const res = await api.uploadDataset(file, (pct) => setUploadPct(pct));
+      // Upload 100% -> switch to parsing phase (backend async snapshot)
+      setUploadPct(100);
       await api.createDataset({
         name: file.name.replace(/\.(zip|tar\.gz|tgz)$/i, ""),
         sourcePath: res.file_path,
       });
-      toast.success("\u6570\u636e\u96c6\u5df2\u5bfc\u5165");
+      toast.success("已提交，后台解析中（700M 约需 1-2 分钟，自动刷新）");
       setShowImport(false);
       loadDatasets();
+      // Poll until snapshot ready (validationStatus != "-" or imageCount >0)
+      const targetName = file.name.replace(/\.(zip|tar\.gz|tgz)$/i, "");
+      let polls = 0;
+      const timer = setInterval(async () => {
+        polls += 1;
+        if (polls > 60) { clearInterval(timer); return; }
+        try {
+          const list = await api.getDatasets();
+          setDatasets(list);
+          const d = list.find((x) => x.name === targetName || x.name.startsWith(targetName));
+          if (d && d.validationStatus !== "-" && (d.imageCount ?? 0) > 0) {
+            clearInterval(timer);
+            toast.success(`数据集 ${d.name} 解析完成：${d.imageCount} 张`);
+          }
+        } catch { /* ignore */ }
+      }, 3000);
     } catch (err) {
       toast.error("\u5bfc\u5165\u5931\u8d25: " + (err as Error).message);
     }
@@ -93,11 +111,11 @@ export default function DatasetsPage() {
             <input ref={fileInputRef} type="file" accept=".zip,.tar.gz,.tgz" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
             {uploading ? (
               <>
-                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>上传中...</div>
+                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>{(uploadPct ?? 0) >= 100 ? "后台解析中..." : "上传中..."}</div>
                 <div style={{ width: 200, height: 6, background: "#e0e0e0", borderRadius: 3, margin: "0 auto" }}>
                   <div style={{ width: `${uploadPct ?? 0}%`, height: "100%", background: "#1766ad", borderRadius: 3, transition: "width 0.3s" }} />
                 </div>
-                <div style={{ marginTop: 6, fontSize: 11, color: "#666" }}>{uploadPct ?? 0}%</div>
+                <div style={{ marginTop: 6, fontSize: 11, color: "#666" }}>{(uploadPct ?? 0) >= 100 ? "已上传，等待解析" : `${uploadPct ?? 0}%`}</div>
               </>
             ) : (
               <>
@@ -136,23 +154,25 @@ export default function DatasetsPage() {
               </tr>
             </thead>
             <tbody>
-              {datasets.map((d) => (
-                <tr key={d.id}>
+              {datasets.map((d) => {
+                const isParsing = (d.imageCount ?? 0) === 0 && (d.validationStatus ?? "-") === "-" && !d.latestSnapshotId;
+                return (
+                <tr key={d.id} style={isParsing ? { background: "#fffbf0" } : undefined}>
                   <td>
-                    <div style={{ fontWeight: 600 }}>{d.name}</div>
+                    <div style={{ fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>{d.name}{isParsing && <span className="badge badge-orange" style={{ fontSize: 9 }}>解析中</span>}</div>
                     <div style={{ color: "var(--text-muted)", fontSize: 9, fontFamily: "Courier New, monospace" }}>{d.id}</div>
                   </td>
-                  <td>{d.labelSchemaName ?? "-"}</td>
-                  <td style={{ fontWeight: 600 }}>{(d.imageCount ?? 0).toLocaleString()}</td>
-                  <td>{(d.trainCount ?? 0).toLocaleString()}</td>
-                  <td>{(d.valCount ?? 0).toLocaleString()}</td>
-                  <td>{(d.testCount ?? 0).toLocaleString()}</td>
+                  <td>{isParsing ? <span style={{ color: "#b56a28", fontSize: 11 }}>—</span> : (d.labelSchemaName ?? "-")}</td>
+                  <td style={{ fontWeight: 600 }}>{isParsing ? <span style={{ color: "#b56a28" }}>解析中</span> : (d.imageCount ?? 0).toLocaleString()}</td>
+                  <td>{isParsing ? "—" : (d.trainCount ?? 0).toLocaleString()}</td>
+                  <td>{isParsing ? "—" : (d.valCount ?? 0).toLocaleString()}</td>
+                  <td>{isParsing ? "—" : (d.testCount ?? 0).toLocaleString()}</td>
                   <td>{d.source ?? "-"}</td>
-                  <td><span className={`badge ${(d.validationStatus ?? "") === "通过" ? "badge-green" : "badge-red"}`}>{d.validationStatus ?? "-"}</span></td>
-                  <td style={{ fontFamily: "Courier New, monospace", fontSize: 10 }}>{d.latestSnapshotId ?? "-"}</td>
+                  <td>{isParsing ? <span className="badge badge-orange">解析中</span> : <span className={`badge ${(d.validationStatus ?? "") === "通过" ? "badge-green" : "badge-red"}`}>{d.validationStatus ?? "-"}</span>}</td>
+                  <td style={{ fontFamily: "Courier New, monospace", fontSize: 10 }}>{isParsing ? <span style={{ color: "#b56a28" }}>生成中</span> : (d.latestSnapshotId ?? "-")}</td>
                   <td><button className="btn small danger" onClick={() => handleDelete(d.id)}>删除</button></td>
                 </tr>
-              ))}
+              );})}
             </tbody>
           </table>
         </div>

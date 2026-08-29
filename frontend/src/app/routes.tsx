@@ -10,6 +10,7 @@ import EvaluationsPage from "../features/evaluations/EvaluationsPage";
 import ReleasesPage from "../features/releases/ReleasesPage";
 import ResourcesPage from "../features/resources/ResourcesPage";
 import OperationsPage from "../features/operations/OperationsPage";
+import ApiTestPage from "../features/api/ApiTestPage";
 
 const navItems = [
   { to: "/dashboard", label: "总览", icon: "▦" },
@@ -20,6 +21,7 @@ const navItems = [
 ];
 
 const navItems2 = [
+  { to: "/api-test", label: "API 接口", icon: "⚡" },
   { to: "/operations", label: "运维管理", icon: "⛭" },
 ];
 
@@ -32,6 +34,7 @@ const pageTitles: Record<string, string> = {
   "/evaluations": "模型评估",
   "/releases": "发布管理",
   "/resources": "资源控制",
+  "/api-test": "API 接口",
   "/operations": "运维管理",
 };
 
@@ -111,6 +114,7 @@ export function AppRoutes() {
           <Route path="/evaluations" element={<EvaluationsPage />} />
           <Route path="/releases" element={<ReleasesPage />} />
           <Route path="/resources" element={<ResourcesPage />} />
+          <Route path="/api-test" element={<ApiTestPage />} />
           <Route path="/operations" element={<OperationsPage />} />
         </Routes>
       </main>

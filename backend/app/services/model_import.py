@@ -149,7 +149,9 @@ def import_root_model(
         merged_metadata = metadata_json or {}
 
     artifact_hash = compute_file_hash(file_path)
+    from backend.app.repositories.model_repository import _generate_model_code
     model = ModelNode(
+        code=_generate_model_code(session),
         task_type=task_type,
         model_family=model_family,
         artifact_path=str(file_path),
