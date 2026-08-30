@@ -15,17 +15,17 @@
 - 自动标注（预留）
 
 ## 架构
-- 前端 `features/datasets/DatasetCreatePage` + `features/datasets/DatasetAnnotatePage` + `AnnotateCanvas.tsx`，路由注册 `app/routes.tsx:pageTitles` 与侧边栏，`X-API-Key` 经 `lib/createApi.ts:camelizeKeys`，新增 `ApiClient` 方法并在 `mockApi.ts` 补 `VITE_USE_MOCKS` 分支
+- 前端 `features/datasets/DatasetCreatePage` + `features/datasets/DatasetAnnotatePage` + `AnnotateCanvas.tsx`，路由注册 `app/routes.tsx:pageTitles` 与侧边栏，`X-API-Key` 经 `lib/createApi.ts:camelizeKeys`，`ApiClient` 新增 `uploadImages/saveAnnotation/batchOp/createSnapshot` 并在 `mockApi.ts` 补 `VITE_USE_MOCKS` 分支，`DatasetListItemResponse` 新增 `status: empty|ready` 供空集与解析中区分
 - 后端 `POST /api/datasets` 复用现有 `DatasetCreate`（`sourcePath=null` 时走空数据集分支，跳过 `commit` 前 `BackgroundTasks` 的 `source_path` 检查，`Settings.dataset_dir` 解析为 `/data/datasets/extracted/{id}`，`_locate_yaml`/`_parse_data_yaml` 复用 `dataset_validation.py`，无 `data.yaml` 时在 `snapshot` 前合成 `train/val` 路径）
 - 上传 `POST /api/datasets/{id}/images`（`multipart`，`_MAX_DATASET_BYTES 2GB`，`worker_session`）批量写 `extracted/{id}/images/train`，自动生成空 `labels`
-- 标注 `PUT /api/datasets/{id}/annotations/{imageId}` 写 `labels/{split}/{name}.txt`（YOLO 归一化 `class x y w h` 或 `class x1 y1 x2 y2 ...`，`len(parts)>=5` 匹配 `dataset_validation.py:231`）
+- 标注 `PUT /api/datasets/{id}/annotations/{imageId}` 写 `labels/{split}/{name}.txt`（YOLO 归一化：`bbox` 为 `5` 列 `class x y w h`，`seg` 为 `1+2*N, N>=3` 且闭合，前后端均校验 `0~1` 区间与偶数坐标对，`dataset_validation.py:231` 仅作 `>=5` 兜底）
 - 类别 `CRUD`：空数据集阶段 `LabelSchema` 未被 `DatasetSnapshot` 引用，允许 `LabelSchemaClass` 增删改；首个 `snapshot` 后 `label_schema.py:128` 密封，后续“重命名”走新建 `LabelSchema` 版本（`parent_schema_id`）而非原地 `UPDATE`
 - 批量 `POST /api/datasets/{id}/batch` 事务删图/改类/复制，同步更新 `manifest` 前不生成快照
 - 快照 `POST /api/datasets/{id}/snapshot` 复用 `storage/snapshots.py:create_dataset_snapshot(source_dir=extracted/{id}, store_root=..., snapshot_root=...)`，`data.yaml` 在快照前合成 `nc/names + train/val`，`quality_json` 写入 `warnings`
 
 ## 组件与交互
 - **DatasetCreatePage**：`名称 + 描述 + 初始类别列表`，提交后跳标注页
-- **AnnotateCanvas**：`bbox` 拖拽、`polygon` 点选闭合、滚轮缩放、`1-9` 切换类别、`Del` 删除
+- **AnnotateCanvas**：`props: { imageUrl, annotations, classMap, mode, onSave }`，`bbox` 拖拽、`polygon` 点选闭合、滚轮缩放、`1-9` 切换类别、`Del` 删除
 - **ClassPanel**：类别列表（颜色+计数），新增/重命名/删除（同步删除该类所有标签）
 - **ImageGrid**：缩略图网格，多选（`Shift` 连选），底部批量条
 - **UploadDrop**：拖拽上传，进度条，自动按 `train` 归档
@@ -35,7 +35,7 @@
 - 标注：前端 `1-9`/`Del` 快捷键需焦点陷阱，校验 `class_id < nc`、`0~1` 归一化，失败 `400` + `toast`，`worker_session` 提交顺序 `commit` 后再 `BackgroundTasks`
 - 类别：空阶段可原地改，首快照后走版本化；前端 `isParsing` 需区分 `imageCount 0 && !snapshot` 的空数据集与 `解析中`（新增 `status: empty` 避免 `DatasetsPage.tsx:158` 误判橙标）
 - 批量：`Shift` 多选 + 虚拟化（>1k 图），事务删 `images` + `labels`，快照前不更新 `manifest_hash`，`orphan_label` 警告复用 `dataset_validation.py:388`
-- 快照：合成 `data.yaml` 后 `create_dataset_snapshot`，`manifest.json` 含 `source_dir` 相对路径，训练/评估经 `yolo_dataset.py` 回退读原图，`store` 不预拷贝以避 `9p` 慢路径
+- 快照：合成 `data.yaml` 后 `create_dataset_snapshot`，`manifest.json` 含 `source_dir` 绝对路径字符串 + `train/val/test_files` 相对路径条目，`store_root` 传入但不预拷贝（`store` 仅用于历史兼容，`yolo_dataset.py` 回退读原图以避 `9p` 慢路径）
 
 ## 原型
 - `tmp/dataset_annotate_prototype.html`（三栏：类别/画布/图片网格 + 上传/批量）
