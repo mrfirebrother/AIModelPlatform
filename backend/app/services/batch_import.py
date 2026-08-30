@@ -210,11 +210,12 @@ def extract_archive(archive_path: Path, output_dir: Path) -> ArchiveExtractionRe
 
 
 def _find_dataset_root(extracted: Path) -> Path:
-    if (extracted / "data.yaml").exists():
-        return extracted
-    for child in sorted(extracted.iterdir()):
-        if child.is_dir() and (child / "data.yaml").exists():
-            return child
+    from backend.app.services.dataset_validation import _locate_yaml
+
+    # Prefer located yaml
+    yaml_path = _locate_yaml(extracted)
+    if yaml_path is not None:
+        return yaml_path.parent
     return extracted
 
 

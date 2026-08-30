@@ -1,4 +1,4 @@
-import { Routes, Route, NavLink, Navigate, useLocation } from "react-router-dom";
+﻿import { Routes, Route, NavLink, Navigate, useLocation } from "react-router-dom";
 import DashboardPage from "../features/dashboard/DashboardPage";
 import ModelsPage from "../features/models/ModelsPage";
 import ModelDetailPage from "../features/models/ModelDetailPage";
@@ -11,6 +11,8 @@ import ReleasesPage from "../features/releases/ReleasesPage";
 import ResourcesPage from "../features/resources/ResourcesPage";
 import OperationsPage from "../features/operations/OperationsPage";
 import ApiTestPage from "../features/api/ApiTestPage";
+import DatasetCreatePage from "../features/datasets/DatasetCreatePage";
+import DatasetAnnotatePage from "../features/datasets/DatasetAnnotatePage";
 
 const navItems = [
   { to: "/dashboard", label: "总览", icon: "▦" },
@@ -35,6 +37,7 @@ const pageTitles: Record<string, string> = {
   "/releases": "发布管理",
   "/resources": "资源控制",
   "/api-test": "API 接口",
+  "/datasets/create": "新建数据集",
   "/operations": "运维管理",
 };
 
@@ -109,6 +112,8 @@ export function AppRoutes() {
           <Route path="/models/:id" element={<ModelDetailPage />} />
           <Route path="/bindings" element={<BindingsPage />} />
           <Route path="/datasets" element={<DatasetsPage />} />
+          <Route path="/datasets/create" element={<DatasetCreatePage />} />
+          <Route path="/datasets/:id/annotate" element={<DatasetAnnotatePage />} />
           <Route path="/training" element={<TrainingPage />} />
           <Route path="/training/create" element={<TrainingCreatePage />} />
           <Route path="/evaluations" element={<EvaluationsPage />} />

@@ -1,4 +1,5 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { createApi } from "../../lib/createApi";
 import { useToast } from "../../lib/toast";
 import type { Dataset } from "../../lib/api";
@@ -6,6 +7,7 @@ import type { Dataset } from "../../lib/api";
 export default function DatasetsPage() {
   const api = useMemo(() => createApi(), []);
   const toast = useToast();
+  const navigate = useNavigate();
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [showImport, setShowImport] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -88,6 +90,7 @@ export default function DatasetsPage() {
     <>
       <div className="top-actions" style={{ marginBottom: 16, display: "flex", gap: 10, alignItems: "center" }}>
         <button className="btn primary" onClick={() => setShowImport(true)}>+ 导入数据集</button>
+        <button className="btn" onClick={() => { window.location.hash = "#/datasets/create"; window.location.href = "/#/datasets/create"; window.location.pathname = "/datasets/create"; }}>+ 新建数据集</button>
       </div>
 
       {showImport && (
@@ -170,7 +173,12 @@ export default function DatasetsPage() {
                   <td>{d.source ?? "-"}</td>
                   <td>{isParsing ? <span className="badge badge-orange">解析中</span> : <span className={`badge ${(d.validationStatus ?? "") === "通过" ? "badge-green" : "badge-red"}`}>{d.validationStatus ?? "-"}</span>}</td>
                   <td style={{ fontFamily: "Courier New, monospace", fontSize: 10 }}>{isParsing ? <span style={{ color: "#b56a28" }}>生成中</span> : (d.latestSnapshotId ?? "-")}</td>
-                  <td><button className="btn small danger" onClick={() => handleDelete(d.id)}>删除</button></td>
+                  <td>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      {!d.source && <button className="btn small" onClick={() => navigate(`/datasets/${d.id}/annotate`)}>标注</button>}
+                      <button className="btn small danger" onClick={() => handleDelete(d.id)}>删除</button>
+                    </div>
+                  </td>
                 </tr>
               );})}
             </tbody>
