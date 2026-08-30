@@ -29,6 +29,7 @@ class SnapshotManifest:
     train_negative: int
     val_negative: int
     test_negative: int
+    source_dir: str = ""
     data_yaml: dict[str, str] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, str]:
@@ -43,6 +44,7 @@ class SnapshotManifest:
             "train_negative": self.train_negative,
             "val_negative": self.val_negative,
             "test_negative": self.test_negative,
+            "source_dir": self.source_dir,
             "data_yaml": self.data_yaml,
         }
 
@@ -60,18 +62,11 @@ class SnapshotResult:
 def _build_file_entry(
     img_path: Path,
     label_path: Path,
-    store: ContentAddressedStore,
     source_dir: Path,
 ) -> dict[str, str]:
-    img_stored = store.store_file(img_path, extension=img_path.suffix)
-    label_stored = store.store_file(label_path, extension=".txt")
     return {
         "image": str(img_path.relative_to(source_dir).as_posix()),
         "label": str(label_path.relative_to(source_dir).as_posix()),
-        "image_hash": f"sha256:{img_stored.name.split('.')[0]}",
-        "label_hash": f"sha256:{label_stored.name.split('.')[0]}",
-        "image_stored_path": str(img_stored),
-        "label_stored_path": str(label_stored),
     }
 
 
@@ -108,8 +103,6 @@ def create_dataset_snapshot(
         error_msgs = "; ".join(e.message for e in validation.errors)
         raise ValueError(f"Dataset validation failed: {error_msgs}")
 
-    store = ContentAddressedStore(store_root)
-
     manifest_files: dict[str, list[dict[str, str]]] = {"train": [], "val": [], "test": []}
     split_counts: dict[str, dict[str, int]] = {
         "train": {"positive": 0, "negative": 0},
@@ -134,7 +127,7 @@ def create_dataset_snapshot(
             label_file = lbl_dir / (img_file.stem + ".txt")
             if not label_file.exists():
                 continue
-            entry = _build_file_entry(img_file, label_file, store, source_dir)
+            entry = _build_file_entry(img_file, label_file, source_dir)
             manifest_files[split].append(entry)
 
     data_yaml = {}
@@ -162,6 +155,7 @@ def create_dataset_snapshot(
         train_negative=split_counts["train"]["negative"],
         val_negative=split_counts["val"]["negative"],
         test_negative=split_counts["test"]["negative"],
+        source_dir=str(source_dir),
         data_yaml=data_yaml,
     )
 

@@ -29,6 +29,8 @@ class YoloDataset:
             (output_dir / "images" / split).mkdir(parents=True, exist_ok=True)
             (output_dir / "labels" / split).mkdir(parents=True, exist_ok=True)
 
+        source_dir = Path(manifest.get("source_dir", ""))
+
         for split in ("train", "val", "test"):
             key = f"{split}_files"
             files = manifest.get(key, [])
@@ -39,6 +41,12 @@ class YoloDataset:
                 lbl_src = entry.get("label_stored_path")
                 img_rel = entry.get("image", "")
                 lbl_rel = entry.get("label", "")
+
+                # Fall back to source_dir when stored paths are not available
+                if not img_src and img_rel and source_dir:
+                    img_src = str(source_dir / img_rel)
+                if not lbl_src and lbl_rel and source_dir:
+                    lbl_src = str(source_dir / lbl_rel)
 
                 if img_src and img_rel:
                     dst = output_dir / "images" / split / Path(img_rel).name

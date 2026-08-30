@@ -210,8 +210,14 @@ def _load_dataset_images(
 ) -> list[Any]:
     from PIL import Image
     images: list[Any] = []
+    source_dir = Path(dataset_manifest.get("source_dir", ""))
     for entry in dataset_manifest.get("test_files", []):
         p = entry.get("image_stored_path")
+        if not p or not Path(p).exists():
+            # Fall back to source_dir + relative path
+            img_rel = entry.get("image", "")
+            if img_rel and source_dir:
+                p = str(source_dir / img_rel)
         if not p or not Path(p).exists():
             continue
         try:
@@ -227,8 +233,13 @@ def _load_ground_truths(
     image_sizes: list[tuple[int, int]] | None = None,
 ) -> list[list[dict[str, Any]]]:
     gts: list[list[dict[str, Any]]] = []
+    source_dir = Path(dataset_manifest.get("source_dir", ""))
     for index, entry in enumerate(dataset_manifest.get("test_files", [])):
         p = entry.get("label_stored_path")
+        if not p or not Path(p).exists():
+            lbl_rel = entry.get("label", "")
+            if lbl_rel and source_dir:
+                p = str(source_dir / lbl_rel)
         boxes: list[dict[str, Any]] = []
         width, height = image_sizes[index] if image_sizes and index < len(image_sizes) else (1, 1)
         if p and Path(p).exists():
