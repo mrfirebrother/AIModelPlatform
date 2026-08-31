@@ -14,10 +14,7 @@ export default function DatasetCreatePage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) {
-      toast.error("名称必填");
-      return;
-    }
+    if (!name.trim()) { toast.error("名称必填"); return; }
     setSubmitting(true);
     try {
       const classList = classes.split(",").map((c) => c.trim()).filter(Boolean);
@@ -25,14 +22,12 @@ export default function DatasetCreatePage() {
       const id = (ds as any).id || (ds as any).dataset_id;
       toast.success("数据集已创建");
       navigate(`/datasets/${id}/annotate`);
-    } catch (err) {
-      toast.error("创建失败: " + (err as Error).message);
-    }
+    } catch (err) { toast.error("创建失败: " + (err as Error).message); }
     setSubmitting(false);
   };
 
   return (
-    <div className="card" style={{ maxWidth: 560 }}>
+    <div className="card form-card">
       <div className="card-head">
         <div>
           <div className="card-title">新建数据集</div>
@@ -51,9 +46,9 @@ export default function DatasetCreatePage() {
             <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="可选" maxLength={200} />
           </div>
           <div className="form-group">
-            <label>初始类别（逗号分隔）</label>
+            <label>{"初始类别（逗号分隔）"}</label>
             <input value={classes} onChange={(e) => setClasses(e.target.value)} placeholder="crack, background" />
-            <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4 }}>用于生成 LabelSchema，示例：crack</div>
+            <div className="form-hint">{"用于生成 LabelSchema"}</div>
           </div>
         </div>
         <div className="modal-foot">

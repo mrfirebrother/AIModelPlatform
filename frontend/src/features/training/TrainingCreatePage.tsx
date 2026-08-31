@@ -35,7 +35,7 @@ export default function TrainingCreatePage() {
       toast.error("数据集没有快照，请先导入并验证数据集");
       return;
     }
-    const ok = await toast.confirm(`确定加入训练？\n模型：${modelName.trim() || `${parent?.name || "yolo"}-finetune`} · ${epochs} 轮 · ${dataset?.name || ""}`, );
+    const ok = await toast.confirm(`确定加入训练？\n模型：${modelName.trim() || `${parent?.name || "yolo"}-finetune`} · ${epochs} 轮 · ${dataset?.name || ""}`);
     if (!ok) return;
     setSubmitting(true);
     try {
@@ -57,7 +57,7 @@ export default function TrainingCreatePage() {
   };
 
   return (
-    <div className="card" style={{ maxWidth: 560 }}>
+    <div className="card form-card">
       <div className="card-head">
         <div>
           <div className="card-title">新建训练任务</div>
@@ -71,9 +71,7 @@ export default function TrainingCreatePage() {
             <label>父模型节点</label>
             <select value={parentId} onChange={(e) => setParentId(e.target.value)}>
               {models.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name} ({m.code || m.id.slice(0, 8)})
-                </option>
+                <option key={m.id} value={m.id}>{m.name} ({m.code || m.id.slice(0, 8)})</option>
               ))}
             </select>
           </div>
@@ -81,16 +79,14 @@ export default function TrainingCreatePage() {
             <label>数据集快照</label>
             <select value={datasetId} onChange={(e) => setDatasetId(e.target.value)}>
               {datasets.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.name} ({(d.imageCount ?? 0)} 张图片)
-                </option>
+                <option key={d.id} value={d.id}>{d.name} ({(d.imageCount ?? 0)} 张图片)</option>
               ))}
             </select>
           </div>
           <div className="form-group">
             <label>模型名称</label>
             <input type="text" value={modelName} onChange={(e) => setModelName(e.target.value)} placeholder={`${models.find((m) => m.id===parentId)?.name || "yolo"}-finetune`} maxLength={40} />
-            <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4 }}>为空则自动命名，产出模型显示此名称而非 YOLOv8</div>
+            <div className="form-hint">为空则自动命名</div>
           </div>
           <div className="form-group">
             <label>训练轮数</label>
