@@ -15,8 +15,9 @@ export default function DatasetAnnotatePage() {
   const [classId, setClassId] = useState(0);
   const [refreshKey, setRefreshKey] = useState(0);
   const [classNames, setClassNames] = useState<string[]>([]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
-  const imageUrl = id ? `/api/datasets/${id}/images/${images[current]}` : "";
+  const imageUrl = id && images.length > 0 ? `/api/datasets/${id}/images/${images[current]}` : "";
 
   // Load image list on mount
   useEffect(() => {
@@ -36,11 +37,10 @@ export default function DatasetAnnotatePage() {
           if (data.classes && data.classes.length > 0) {
             setClassNames(data.classes);
           } else {
-            // Fallback: show single default class
-            setClassNames(["object"]);
+            setClassNames([]);
           }
         })
-        .catch(() => { setClassNames(["object"]); });
+        .catch(() => { setClassNames([]); });
     });
   }, [id]);
 
@@ -119,14 +119,23 @@ export default function DatasetAnnotatePage() {
           <option value="bbox">框选</option>
           <option value="polygon">多边形</option>
         </select>
-        <select value={classId} onChange={(e) => setClassId(Number(e.target.value))} style={{ padding: "6px 8px", border: "1px solid #bed2df", borderRadius: 3 }}>
-          {classNames.map((c, i) => <option key={i} value={i}>{c}</option>)}
-        </select>
+        {classNames.length > 0 && (
+          <select value={classId} onChange={(e) => setClassId(Number(e.target.value))} style={{ padding: "6px 8px", border: "1px solid #bed2df", borderRadius: 3 }}>
+            {classNames.map((c, i) => <option key={i} value={i}>{c}</option>)}
+          </select>
+        )}
+        {classNames.length === 0 && (
+          <span style={{ fontSize: 11, color: "var(--text-muted)", padding: "6px 0" }}>无标注类别（负例模式）</span>
+        )}
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 200px", gap: 12 }}>
           <div className="card" style={{ padding: 12, display: "flex", flexDirection: "column", alignItems: "center" }}>
           <div style={{ width: "100%", maxWidth: 600, display: "flex", justifyContent: "center" }}>
-            <AnnotateCanvas key={`${images[current]}-${refreshKey}`} imageUrl={imageUrl} mode={mode} classId={classId} onSave={handleSave} datasetId={id} imageId={images[current]} />
+            {images.length > 0 ? (
+              <AnnotateCanvas key={`${images[current]}-${refreshKey}`} imageUrl={imageUrl} mode={mode} classId={classId} onSave={handleSave} datasetId={id} imageId={images[current]} />
+            ) : (
+              <div style={{ padding: 60, textAlign: "center", color: "var(--text-muted)", fontSize: 12 }}>暂无图片，请先上传</div>
+            )}
           </div>
           <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
             <button className="btn small" onClick={() => setCurrent((c) => Math.max(0, c - 1))}>上一张</button>
@@ -135,15 +144,33 @@ export default function DatasetAnnotatePage() {
           </div>
         </div>
         <div className="card" style={{ padding: 8 }}>
-          <div style={{ fontWeight: 600, fontSize: 11, marginBottom: 8 }}>图片列表 (Shift 多选)</div>
-          {images.map((img, idx) => (
-            <div key={img} onClick={() => setCurrent(idx)} style={{ padding: "6px 8px", borderBottom: "1px solid #f0f4f8", cursor: "pointer", background: idx === current ? "#e7f1fa" : undefined, fontSize: 11 }}>{img}</div>
-          ))}
-          <div style={{ marginTop: 8, display: "flex", gap: 6 }}>
-            <button className="btn small" onClick={async () => {
-              await fetch(`/api/datasets/${id}/batch`, { method: "POST", headers: { "Content-Type": "application/json", "X-API-Key": import.meta.env.VITE_API_KEY || "change-me" }, body: JSON.stringify({ operation: "delete", image_ids: [images[current]] }) });
-              toast.success("已删除");
-            }}>批量删图</button>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+            <label style={{ fontSize: 11, fontWeight: 600, display: "flex", alignItems: "center", gap: 4, cursor: "pointer" }}>
+              <input type="checkbox" checked={selected.size === images.length && images.length > 0} onChange={(e) => { if (e.target.checked) setSelected(new Set(images)); else setSelected(new Set()); }} />
+              全选 ({selected.size}/{images.length})
+            </label>
+            {selected.size > 0 && (
+              <button className="btn small danger" onClick={async () => {
+                const ok = await toast.confirm(`确定删除选中的 ${selected.size} 张图片？`);
+                if (!ok) return;
+                await fetch(`/api/datasets/${id}/batch`, { method: "POST", headers: { "Content-Type": "application/json", "X-API-Key": import.meta.env.VITE_API_KEY || "change-me" }, body: JSON.stringify({ operation: "delete", image_ids: Array.from(selected) }) });
+                toast.success(`已删除 ${selected.size} 张`);
+                const remaining = images.filter((img) => !selected.has(img));
+                setImages(remaining);
+                setSelected(new Set());
+                if (current >= remaining.length) setCurrent(Math.max(0, remaining.length - 1));
+              }}>删除选中 ({selected.size})</button>
+            )}
+          </div>
+          <div style={{ maxHeight: 400, overflowY: "auto" }}>
+            {images.map((img, idx) => (
+              <div key={img} style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 6px", borderBottom: "1px solid #f0f4f8", background: idx === current ? "#e7f1fa" : undefined }}>
+                <input type="checkbox" checked={selected.has(img)} onChange={(e) => {
+                  setSelected((prev) => { const next = new Set(prev); if (e.target.checked) next.add(img); else next.delete(img); return next; });
+                }} onClick={(e) => e.stopPropagation()} />
+                <span onClick={() => setCurrent(idx)} style={{ flex: 1, cursor: "pointer", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{img}</span>
+              </div>
+            ))}
           </div>
         </div>
       </div>

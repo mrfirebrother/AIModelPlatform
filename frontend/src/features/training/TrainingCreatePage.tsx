@@ -11,7 +11,7 @@ export default function TrainingCreatePage() {
   const [models, setModels] = useState<ModelNode[]>([]);
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [parentId, setParentId] = useState("");
-  const [datasetId, setDatasetId] = useState("");
+  const [selectedDs, setSelectedDs] = useState<Set<string>>(new Set());
   const [modelName, setModelName] = useState("");
   const [epochs, setEpochs] = useState(100);
 
@@ -20,32 +20,41 @@ export default function TrainingCreatePage() {
       setModels(m);
       setDatasets(d);
       if (m.length > 0) setParentId(m[0].id);
-      if (d.length > 0) setDatasetId(d[0].id);
     }).catch(() => {});
   }, [api]);
+
+  const toggleDs = (id: string) => {
+    setSelectedDs((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const selectedList = datasets.filter((d) => selectedDs.has(d.id));
+  const totalImages = selectedList.reduce((s, d) => s + (d.imageCount ?? 0), 0);
+  const allWithSnapshot = selectedList.every((d) => !!d.latestSnapshotId);
 
   const [submitting, setSubmitting] = useState(false);
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (submitting) return;
+    if (selectedDs.size === 0) { toast.error("请选择至少一个数据集"); return; }
+    if (!allWithSnapshot) { toast.error("所选数据集中有未生成快照的，请先生成快照"); return; }
     const parent = models.find((m) => m.id === parentId);
-    const dataset = datasets.find((d) => d.id === datasetId);
-    const snapshotId = dataset?.latestSnapshotId;
-    if (!snapshotId) {
-      toast.error("数据集没有快照，请先导入并验证数据集");
-      return;
-    }
-    const ok = await toast.confirm(`确定加入训练？\n模型：${modelName.trim() || `${parent?.name || "yolo"}-finetune`} · ${epochs} 轮 · ${dataset?.name || ""}`);
+    const dsNames = selectedList.map((d) => d.name).join(", ");
+    const ok = await toast.confirm(`确定加入训练？\n模型：${modelName.trim() || `${parent?.name || "yolo"}-finetune`} \u00b7 ${epochs} 轮 \u00b7 ${selectedDs.size} 个数据集 (${totalImages} 张)`);
     if (!ok) return;
     setSubmitting(true);
     try {
       const name = modelName.trim() || `${parent?.name || "yolo"}-finetune`;
+      const snapshotIds = selectedList.map((d) => d.latestSnapshotId!);
       await api.createTrainingTask({
-        datasetSnapshotId: snapshotId,
+        datasetSnapshotId: snapshotIds[0],
         parentModelNodeId: parentId || undefined,
         taskType: parent?.taskType || "object_detection",
         modelFamily: parent?.modelFamily || "YOLOv8",
-        trainingConfigJson: { epochs, model_name: name },
+        trainingConfigJson: { epochs, model_name: name, dataset_snapshot_ids: snapshotIds },
       });
       toast.success("训练任务已创建");
       navigate("/training");
@@ -55,6 +64,8 @@ export default function TrainingCreatePage() {
       setSubmitting(false);
     }
   };
+
+  const parentName = models.find((m) => m.id === parentId)?.name || "yolo";
 
   return (
     <div className="card form-card">
@@ -76,16 +87,24 @@ export default function TrainingCreatePage() {
             </select>
           </div>
           <div className="form-group">
-            <label>数据集快照</label>
-            <select value={datasetId} onChange={(e) => setDatasetId(e.target.value)}>
+            <label>数据集（可多选）</label>
+            <div style={{ border: "1px solid #bed2df", borderRadius: 3, maxHeight: 180, overflowY: "auto" }}>
               {datasets.map((d) => (
-                <option key={d.id} value={d.id}>{d.name} ({(d.imageCount ?? 0)} 张图片)</option>
+                <label key={d.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderBottom: "1px solid #f0f4f8", cursor: "pointer", fontSize: 12, background: selectedDs.has(d.id) ? "#e7f1fa" : undefined }}>
+                  <input type="checkbox" checked={selectedDs.has(d.id)} onChange={() => toggleDs(d.id)} />
+                  <span style={{ flex: 1 }}>{d.name}</span>
+                  <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{(d.imageCount ?? 0)} 张</span>
+                  {!d.latestSnapshotId && <span className="badge badge-orange badge-xs">无快照</span>}
+                </label>
               ))}
-            </select>
+            </div>
+            {selectedDs.size > 0 && (
+              <div className="form-hint" style={{ color: "var(--primary)" }}>已选 {selectedDs.size} 个，共 {totalImages} 张图片</div>
+            )}
           </div>
           <div className="form-group">
             <label>模型名称</label>
-            <input type="text" value={modelName} onChange={(e) => setModelName(e.target.value)} placeholder={`${models.find((m) => m.id===parentId)?.name || "yolo"}-finetune`} maxLength={40} />
+            <input type="text" value={modelName} onChange={(e) => setModelName(e.target.value)} placeholder={`${parentName}-finetune`} maxLength={40} />
             <div className="form-hint">为空则自动命名</div>
           </div>
           <div className="form-group">

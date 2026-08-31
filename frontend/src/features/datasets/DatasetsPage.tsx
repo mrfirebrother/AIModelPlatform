@@ -1,5 +1,4 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { createApi } from "../../lib/createApi";
 import { useToast } from "../../lib/toast";
 import type { Dataset } from "../../lib/api";
@@ -7,7 +6,6 @@ import type { Dataset } from "../../lib/api";
 export default function DatasetsPage() {
   const api = useMemo(() => createApi(), []);
   const toast = useToast();
-  const navigate = useNavigate();
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [showImport, setShowImport] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -88,7 +86,6 @@ export default function DatasetsPage() {
     <>
       <div className="toolbar">
         <button className="btn primary" onClick={() => setShowImport(true)}>+ 导入数据集</button>
-        <button className="btn" onClick={() => { window.location.hash = "#/datasets/create"; window.location.href = "/#/datasets/create"; window.location.pathname = "/datasets/create"; }}>+ 新建数据集</button>
       </div>
 
       {showImport && (
@@ -119,7 +116,42 @@ export default function DatasetsPage() {
             )}
           </div>
           {uploadError && <div style={{ marginTop: 10, color: "#b33", fontSize: 12 }}>{uploadError}</div>}
-          <div style={{ marginTop: 14 }}><button className="btn" onClick={() => { setShowImport(false); setUploadError(null); }}>取消</button></div>
+          <div style={{ marginTop: 14, display: "flex", alignItems: "flex-start", gap: 12 }}>
+            <button className="btn" onClick={() => { setShowImport(false); setUploadError(null); }}>取消</button>
+            <div style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.6 }}>
+              <div style={{ fontWeight: 600, marginBottom: 2 }}>压缩包目录结构要求（二选一）：</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <div style={{ fontFamily: "Courier New, monospace", fontSize: 10, background: "#f8fafc", padding: "8px 10px", borderRadius: 4, border: "1px solid #e6eef6", lineHeight: 1.7 }}>
+                  <div style={{ fontWeight: 600, fontFamily: "inherit", fontSize: 10, marginBottom: 2, color: "var(--text-secondary)" }}>结构A：按 split 分目录</div>
+                  dataset.zip<br/>
+                  &nbsp;&nbsp;├── data.yaml<br/>
+                  &nbsp;&nbsp;├── train/<br/>
+                  &nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;├── images/<br/>
+                  &nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;└── labels/<br/>
+                  &nbsp;&nbsp;├── val/<br/>
+                  &nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;├── images/<br/>
+                  &nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;└── labels/<br/>
+                  &nbsp;&nbsp;└── test/<br/>
+                  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├── images/<br/>
+                  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└── labels/
+                </div>
+                <div style={{ fontFamily: "Courier New, monospace", fontSize: 10, background: "#f8fafc", padding: "8px 10px", borderRadius: 4, border: "1px solid #e6eef6", lineHeight: 1.7 }}>
+                  <div style={{ fontWeight: 600, fontFamily: "inherit", fontSize: 10, marginBottom: 2, color: "var(--text-secondary)" }}>结构B：按类型分目录</div>
+                  dataset.zip<br/>
+                  &nbsp;&nbsp;├── data.yaml<br/>
+                  &nbsp;&nbsp;├── images/<br/>
+                  &nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;├── train/<br/>
+                  &nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;├── val/<br/>
+                  &nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;└── test/<br/>
+                  &nbsp;&nbsp;└── labels/<br/>
+                  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├── train/<br/>
+                  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├── val/<br/>
+                  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└── test/
+                </div>
+              </div>
+              <div style={{ marginTop: 4, fontSize: 10 }}>data.yaml 需含 names 字段，labels/*.txt 为 YOLO 格式，空文件 = 负例。test 目录可选。</div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -162,10 +194,7 @@ export default function DatasetsPage() {
                   <td>{isParsing ? <span className="badge badge-orange">解析中</span> : <span className={`badge ${(d.validationStatus ?? "") === "通过" ? "badge-green" : "badge-red"}`}>{d.validationStatus ?? "-"}</span>}</td>
                   <td className="cell-mono">{isParsing ? <span className="parsing-text">生成中</span> : (d.latestSnapshotId ?? "-")}</td>
                   <td>
-                    <div style={{ display: "flex", gap: 6 }}>
-                      {!d.source && <button className="btn small" onClick={() => navigate(`/datasets/${d.id}/annotate`)}>标注</button>}
-                      <button className="btn small danger" onClick={() => handleDelete(d.id)}>删除</button>
-                    </div>
+                    <button className="btn small danger" onClick={() => handleDelete(d.id)}>删除</button>
                   </td>
                 </tr>
               );})}

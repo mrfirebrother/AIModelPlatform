@@ -236,8 +236,8 @@ def create_dataset(
         db.add(dataset)
         db.flush()
 
-        # Create label schema with provided classes
-        class_list = payload.classes or ["object"]
+        # Create label schema with provided classes (empty = no classes, for negative-only datasets)
+        class_list = payload.classes or []
         schema = LabelSchema(name=f"{name}_schema")
         db.add(schema)
         db.flush()

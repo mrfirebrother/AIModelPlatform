@@ -147,30 +147,55 @@ def run_training(task_id: str) -> str:
             session.commit()
             return f"dataset snapshot not found for task {task_id}"
 
-        if dataset_snapshot.manifest_hash is None:
-            fail_attempt(session, attempt.id, error="Dataset snapshot manifest hash missing")
-            session.commit()
-            return f"dataset snapshot manifest hash missing for task {task_id}"
+        # Support multiple snapshots: merge manifests from all snapshot IDs in config
+        extra_snapshot_ids = training_config.get("dataset_snapshot_ids", [])
+        all_snapshots = [dataset_snapshot]
+        if extra_snapshot_ids and len(extra_snapshot_ids) > 1:
+            for sid in extra_snapshot_ids:
+                snap = session.get(DatasetSnapshot, sid)
+                if snap is not None and snap.id != dataset_snapshot.id:
+                    all_snapshots.append(snap)
 
-        manifest_path = Path(dataset_snapshot.manifest_path)
-        if not manifest_path.exists():
-            fail_attempt(session, attempt.id, error="Dataset snapshot manifest file missing")
-            session.commit()
-            return f"dataset snapshot manifest file missing for task {task_id}"
-        actual_manifest_hash = compute_file_hash(manifest_path)
-        if actual_manifest_hash != dataset_snapshot.manifest_hash:
-            fail_attempt(session, attempt.id, error="Manifest hash mismatch")
-            session.commit()
-            return f"manifest hash mismatch for task {task_id}"
+        merged_train = []
+        merged_val = []
+        merged_test = []
+        nc = 0
+        names = []
+        source_dirs = []
 
-        label_schema = dataset_snapshot.label_schema
-        nc = len(label_schema.classes) if label_schema else 0
-        names = [c.semantic_key for c in label_schema.classes] if label_schema else []
+        for snap in all_snapshots:
+            if snap.manifest_hash is None:
+                continue
+            manifest_path = Path(snap.manifest_path)
+            if not manifest_path.exists():
+                continue
+
+            label_schema = snap.label_schema
+            if label_schema:
+                nc = max(nc, len(label_schema.classes))
+                for c in label_schema.classes:
+                    if c.semantic_key not in names:
+                        names.append(c.semantic_key)
+
+            snap_train = snap.train_manifest_json or []
+            snap_val = snap.val_manifest_json or []
+            snap_test = snap.test_manifest_json or []
+            merged_train.extend(snap_train)
+            merged_val.extend(snap_val)
+            merged_test.extend(snap_test)
+
+            if snap.source_path:
+                source_dirs.append(snap.source_path)
+
+        if not merged_train and not merged_val and not merged_test:
+            fail_attempt(session, attempt.id, error="No valid dataset snapshots found")
+            session.commit()
+            return f"no valid dataset snapshots for task {task_id}"
 
         dataset_manifest = {
-            "train_files": dataset_snapshot.train_manifest_json or [],
-            "val_files": dataset_snapshot.val_manifest_json or [],
-            "test_files": dataset_snapshot.test_manifest_json or [],
+            "train_files": merged_train,
+            "val_files": merged_val,
+            "test_files": merged_test,
             "nc": nc,
             "names": names,
         }

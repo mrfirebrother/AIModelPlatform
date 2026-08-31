@@ -9,7 +9,7 @@ export default function DatasetCreatePage() {
   const navigate = useNavigate();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [classes, setClasses] = useState("crack");
+  const [classes, setClasses] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -46,9 +46,9 @@ export default function DatasetCreatePage() {
             <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="可选" maxLength={200} />
           </div>
           <div className="form-group">
-            <label>{"初始类别（逗号分隔）"}</label>
-            <input value={classes} onChange={(e) => setClasses(e.target.value)} placeholder="crack, background" />
-            <div className="form-hint">{"用于生成 LabelSchema"}</div>
+            <label>{"初始类别（逗号分隔，可选）"}</label>
+            <input value={classes} onChange={(e) => setClasses(e.target.value)} placeholder="留空则无标注类别，可后续添加" />
+            <div className="form-hint">{"为空时可上传图片作为负例训练，有类别时可进行标注"}</div>
           </div>
         </div>
         <div className="modal-foot">

@@ -11,8 +11,6 @@ import ReleasesPage from "../features/releases/ReleasesPage";
 import ResourcesPage from "../features/resources/ResourcesPage";
 import OperationsPage from "../features/operations/OperationsPage";
 import ApiTestPage from "../features/api/ApiTestPage";
-import DatasetCreatePage from "../features/datasets/DatasetCreatePage";
-import DatasetAnnotatePage from "../features/datasets/DatasetAnnotatePage";
 
 const navItems = [
   { to: "/dashboard", label: "总览", icon: "▦" },
@@ -112,8 +110,6 @@ export function AppRoutes() {
           <Route path="/models/:id" element={<ModelDetailPage />} />
           <Route path="/bindings" element={<BindingsPage />} />
           <Route path="/datasets" element={<DatasetsPage />} />
-          <Route path="/datasets/create" element={<DatasetCreatePage />} />
-          <Route path="/datasets/:id/annotate" element={<DatasetAnnotatePage />} />
           <Route path="/training" element={<TrainingPage />} />
           <Route path="/training/create" element={<TrainingCreatePage />} />
           <Route path="/evaluations" element={<EvaluationsPage />} />
