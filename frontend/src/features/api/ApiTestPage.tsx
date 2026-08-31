@@ -64,7 +64,7 @@ export default function ApiTestPage() {
           <div className="card" style={{ padding: 0, overflow: "hidden", minHeight: 100 }}>
             <div className="card-section-header"><div className="card-section-title">{"推理测试"}</div></div>
             <div style={{ padding: "10px 12px" }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 10, alignItems: "center" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "0.25fr 1fr auto", gap: 10, alignItems: "center" }}>
                 <div>
                   <div style={{ fontSize: 9, color: "var(--text-muted)", marginBottom: 4 }}>{"选择模型"}</div>
                   <select value={selectedCode} onChange={(e) => { setSelectedCode(e.target.value); setResult(null); setError(null); }} style={{ width: "100%", padding: "7px 10px", border: "1px solid #bed2df", borderRadius: 3, fontSize: 11, background: "#f6fafc" }}>
