@@ -441,7 +441,7 @@ tr:hover td {
 /* ===== Status Badges ===== */
 .badge {
   display: inline-block;
-  padding: 3px 10px;
+  padding: 3px 5px;
   border-radius: 20px;
   font-family: var(--font-display);
   font-size: 11px;

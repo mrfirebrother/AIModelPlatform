@@ -135,7 +135,6 @@ export default function DatasetsPage() {
             <thead>
               <tr>
                 <th>数据集名称</th>
-                <th>标签体系</th>
                 <th>图片总数</th>
                 <th>训练集</th>
                 <th>验证集</th>
@@ -155,7 +154,6 @@ export default function DatasetsPage() {
                     <div style={{ fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>{d.name}{isParsing && <span className="badge badge-orange badge-xs">解析中</span>}</div>
                     <div className="cell-mono">{d.id}</div>
                   </td>
-                  <td>{isParsing ? <span className="parsing-text">{"—"}</span> : (d.labelSchemaName ?? "-")}</td>
                   <td style={{ fontWeight: 600 }}>{isParsing ? <span className="parsing-text">解析中</span> : (d.imageCount ?? 0).toLocaleString()}</td>
                   <td>{isParsing ? "—" : (d.trainCount ?? 0).toLocaleString()}</td>
                   <td>{isParsing ? "—" : (d.valCount ?? 0).toLocaleString()}</td>
