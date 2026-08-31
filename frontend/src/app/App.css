@@ -300,7 +300,6 @@ a:hover { text-decoration: underline; }
   backdrop-filter: blur(var(--glass-blur));
   box-shadow: var(--shadow);
   border-radius: var(--radius);
-  min-height: 300px;
 }
 
 .grid-card {

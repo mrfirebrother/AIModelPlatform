@@ -1,12 +1,14 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { createApi } from "../../lib/createApi";
 import { useToast } from "../../lib/toast";
+import LoadingSpinner from "../../lib/LoadingSpinner";
 import type { Dataset } from "../../lib/api";
 
 export default function DatasetsPage() {
   const api = useMemo(() => createApi(), []);
   const toast = useToast();
   const [datasets, setDatasets] = useState<Dataset[]>([]);
+  const [loading, setLoading] = useState(true);
   const [showImport, setShowImport] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadPct, setUploadPct] = useState<number | null>(null);
@@ -14,7 +16,7 @@ export default function DatasetsPage() {
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const loadDatasets = () => api.getDatasets().then(setDatasets);
+  const loadDatasets = () => { setLoading(true); api.getDatasets().then(setDatasets).finally(() => setLoading(false)); };
   useEffect(() => { loadDatasets(); }, [api]);
 
   const handleDelete = async (id: string) => {
@@ -162,6 +164,9 @@ export default function DatasetsPage() {
             <div className="card-kicker">{datasets.length} 个数据集</div>
           </div>
         </div>
+        {loading ? (
+          <LoadingSpinner text="加载数据集列表..." />
+        ) : (
         <div className="table-wrap">
           <table>
             <thead>
@@ -201,6 +206,7 @@ export default function DatasetsPage() {
             </tbody>
           </table>
         </div>
+        )}
       </div>
     </>
   );

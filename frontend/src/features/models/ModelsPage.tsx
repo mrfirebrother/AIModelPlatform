@@ -2,6 +2,7 @@
 import { useNavigate } from "react-router-dom";
 import { createApi } from "../../lib/createApi";
 import { useToast } from "../../lib/toast";
+import LoadingSpinner from "../../lib/LoadingSpinner";
 import type { ModelNode } from "../../lib/api";
 import dagre from "dagre";
 
@@ -43,6 +44,7 @@ export default function ModelsPage() {
   const toast = useToast();
   const navigate = useNavigate();
   const [nodes, setNodes] = useState<ModelNode[]>([]);
+  const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>("all");
   const [showImport, setShowImport] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -52,7 +54,7 @@ export default function ModelsPage() {
   const [deleting, setDeleting] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const loadNodes = () => api.getModelNodes().then(setNodes);
+  const loadNodes = () => { setLoading(true); api.getModelNodes().then(setNodes).finally(() => setLoading(false)); };
   useEffect(() => { loadNodes(); }, [api]);
 
   const handleFile = async (file: File) => {
@@ -121,7 +123,11 @@ export default function ModelsPage() {
       {filteredRoots.map((root) => (
         <ModelLineage key={root.id} root={root} allNodes={nodes} onNavigate={(id) => navigate(`/models/${id}`)} onDelete={handleDelete} deleting={deleting} />
       ))}
-      {filteredRoots.length === 0 && <div className="empty-state">暂无模型节点</div>}
+      {loading ? (
+        <LoadingSpinner text="加载模型列表..." />
+      ) : filteredRoots.length === 0 ? (
+        <div className="empty-state">暂无模型节点</div>
+      ) : null}
     </>
   );
 }

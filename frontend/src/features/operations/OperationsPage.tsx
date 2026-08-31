@@ -1,5 +1,6 @@
 ﻿import { useEffect, useMemo, useState } from "react";
 import { createApi } from "../../lib/createApi";
+import LoadingSpinner from "../../lib/LoadingSpinner";
 
 interface OperationLogEntry { id: string; operationType: string; actor: string | null; status: string; summaryJson: Record<string, unknown>; errorSummary: string | null; createdAt: string; }
 interface OperationLogsResponse { items: OperationLogEntry[]; total: number; }
@@ -16,11 +17,12 @@ export default function OperationsPage() {
   const [status, setStatus] = useState<OperationStatusResponse | null>(null);
   const [logs, setLogs] = useState<OperationLogEntry[]>([]);
   const [logsTotal, setLogsTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
   const [logPage, setLogPage] = useState(0);
   const pageSize = 10;
 
   useEffect(() => { fetch("/api/operations/status", { headers: { "X-API-Key": import.meta.env.VITE_API_KEY || "change-me" } }).then((r) => r.json()).then((d: OperationStatusResponse) => setStatus(d)).catch(() => {}); }, []);
-  useEffect(() => { fetch(`/api/operations/logs?skip=${logPage * pageSize}&limit=${pageSize}`, { headers: { "X-API-Key": import.meta.env.VITE_API_KEY || "change-me" } }).then((r) => r.json()).then((d: OperationLogsResponse) => { setLogs(d.items); setLogsTotal(d.total); }).catch(() => {}); }, [logPage]);
+  useEffect(() => { setLoading(true); fetch(`/api/operations/logs?skip=${logPage * pageSize}&limit=${pageSize}`, { headers: { "X-API-Key": import.meta.env.VITE_API_KEY || "change-me" } }).then((r) => r.json()).then((d: OperationLogsResponse) => { setLogs(d.items); setLogsTotal(d.total); }).catch(() => {}).finally(() => setLoading(false)); }, [logPage]);
 
   const checkItems = [{ key: "postgres", label: "PostgreSQL", icon: "⛁" }, { key: "redis", label: "Redis", icon: "⚡" }, { key: "gpu", label: "GPU", icon: "▣" }, { key: "worker", label: "Worker", icon: "⚙" }];
 
@@ -52,7 +54,9 @@ export default function OperationsPage() {
             </div>
           </div>
           <div>
-            {logs.length === 0 ? (
+            {loading ? (
+              <LoadingSpinner text="加载操作日志..." />
+            ) : logs.length === 0 ? (
               <div className="empty-msg-sm">{"暂无操作日志"}</div>
             ) : logs.map((log) => (
               <div key={log.id} className="log-entry">

@@ -2,6 +2,7 @@
 import { useNavigate } from "react-router-dom";
 import { createApi } from "../../lib/createApi";
 import { useToast } from "../../lib/toast";
+import LoadingSpinner from "../../lib/LoadingSpinner";
 import type { TrainingTask, TrainingLogs, TrainingMetrics, TrainingCheckpoint } from "../../lib/api";
 
 const STATUS_LABEL: Record<string, string> = { running: "运行中", queued: "排队中", completed: "已完成", failed: "失败", cancelled: "已取消" };
@@ -18,6 +19,7 @@ export default function TrainingPage() {
   const toast = useToast();
   const navigate = useNavigate();
   const [tasks, setTasks] = useState<TrainingTask[]>([]);
+  const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [logs, setLogs] = useState<TrainingLogs | null>(null);
   const [metrics, setMetrics] = useState<TrainingMetrics | null>(null);
@@ -34,7 +36,7 @@ export default function TrainingPage() {
 
   useEffect(() => { const t = setTimeout(() => setSearch(searchInput.trim().toLowerCase()), 300); return () => clearTimeout(t); }, [searchInput]);
 
-  const fetchTasks = async () => { try { setTasks(await api.getTrainingTasks()); } catch {} };
+  const fetchTasks = async () => { setLoading(true); try { setTasks(await api.getTrainingTasks()); } catch {} setLoading(false); };
   useEffect(() => { fetchTasks(); }, [api]);
 
   useEffect(() => {
@@ -104,6 +106,9 @@ export default function TrainingPage() {
       </div>
 
       <div className="card" style={{ overflow: "hidden" }}>
+        {loading ? (
+          <LoadingSpinner text="加载训练任务..." />
+        ) : (<>
         <div className="grid-table-header" style={{ gridTemplateColumns: "2fr 1fr 1fr 1fr 0.8fr 80px" }}>
           <span>任务</span>
           <span>配置</span>
@@ -147,6 +152,7 @@ export default function TrainingPage() {
             <button className="btn small" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>下一页</button>
           </div>
         )}
+        </>)}
       </div>
 
       {selected && (

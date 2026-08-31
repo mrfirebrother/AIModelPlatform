@@ -1,5 +1,6 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { createApi } from "../../lib/createApi";
+import LoadingSpinner from "../../lib/LoadingSpinner";
 import type { Evaluation } from "../../lib/api";
 
 const STATUS_LABEL: Record<string, string> = { pending: "待处理", auto_passed: "自动通过", passed: "自动通过", approved: "已通过", rejected: "已拒绝", failed: "已拒绝" };
@@ -11,6 +12,7 @@ function formatTime(iso?: string): string { if (!iso) return "—"; const d = ne
 export default function EvaluationsPage() {
   const api = useMemo(() => createApi(), []);
   const [evals, setEvals] = useState<Evaluation[]>([]);
+  const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [searchInput, setSearchInput] = useState("");
@@ -22,7 +24,7 @@ export default function EvaluationsPage() {
   const [inferImageUrl, setInferImageUrl] = useState<string | null>(null);
 
   useEffect(() => { const t = setTimeout(() => setSearch(searchInput.trim().toLowerCase()), 300); return () => clearTimeout(t); }, [searchInput]);
-  const load = async () => { try { setEvals(await api.getEvaluations()); } catch {} };
+  const load = async () => { setLoading(true); try { setEvals(await api.getEvaluations()); } catch {} setLoading(false); };
   useEffect(() => { load(); }, [api]);
   useEffect(() => { const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setSelectedId(null); }; window.addEventListener("keydown", onKey); return () => window.removeEventListener("keydown", onKey); }, []);
 
@@ -91,6 +93,9 @@ export default function EvaluationsPage() {
       </div>
 
       <div className="card" style={{ overflow: "hidden" }}>
+        {loading ? (
+          <LoadingSpinner text="加载评估列表..." />
+        ) : (<>
         <div className="grid-table-header" style={{ gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr 100px" }}>
           <span>模型</span><span>状态</span><span>mAP50</span><span>测试集</span>
           <button className="sort-btn" onClick={() => setSortDir((d) => d === "asc" ? "desc" : "asc")}>时间 {sortDir === "asc" ? "↑" : "↓"}</button>
@@ -114,6 +119,7 @@ export default function EvaluationsPage() {
           );
         })}
         {filtered.length === 0 && <div className="empty-msg">{evals.length === 0 ? "暂无评估" : <>{"无匹配"} <button className="btn small" onClick={() => { setStatusFilter("all"); setSearchInput(""); setSearch(""); }} style={{ marginLeft: 8 }}>清空筛选</button></>}</div>}
+        </>)}
       </div>
 
       {current && (
