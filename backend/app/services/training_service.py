@@ -67,12 +67,13 @@ def delete_task(session: Session, task_id: UUID) -> None:
         raise ValueError(f"Training task {task_id} not found")
     if task.status == "running":
         raise ValueError("Cannot delete running task")
-    # Delete associated checkpoints and attempts first; clear FKs that prevent cascade
     from sqlalchemy import text as _text
+    # Clear all FK references to attempts first
     for attempt in list(task.attempts):
-        # break FK from ModelNode -> attempt via raw SQL to bypass immutable guard
         session.execute(_text("UPDATE model_nodes SET training_attempt_id = NULL WHERE training_attempt_id = :aid"), {"aid": str(attempt.id)})
-        # break self-referential FK attempt -> checkpoint
+    session.flush()
+    # Now delete attempts and their checkpoints
+    for attempt in list(task.attempts):
         attempt.latest_checkpoint_id = None
         attempt.best_checkpoint_id = None
         session.flush()
