@@ -88,12 +88,12 @@ export default function TrainingCreatePage() {
           </div>
           <div className="form-group">
             <label>数据集（可多选）</label>
-            <div style={{ border: "1px solid #bed2df", borderRadius: 3, maxHeight: 180, overflowY: "auto" }}>
+            <div style={{ border: "1px solid var(--surface-border)", borderRadius: 3, maxHeight: 180, overflowY: "auto" }}>
               {datasets.map((d) => (
-                <label key={d.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderBottom: "1px solid #f0f4f8", cursor: "pointer", fontSize: 12, background: selectedDs.has(d.id) ? "#e7f1fa" : undefined }}>
+                <label key={d.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderBottom: "1px solid var(--surface-border)", cursor: "pointer", fontSize: 12, background: selectedDs.has(d.id) ? "#e6f4ff" : undefined }}>
                   <input type="checkbox" checked={selectedDs.has(d.id)} onChange={() => toggleDs(d.id)} />
                   <span style={{ flex: 1 }}>{d.name}</span>
-                  <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{(d.imageCount ?? 0)} 张</span>
+                  <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{(d.imageCount ?? 0)} 张</span>
                   {!d.latestSnapshotId && <span className="badge badge-orange badge-xs">无快照</span>}
                 </label>
               ))}

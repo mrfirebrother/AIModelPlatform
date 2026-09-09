@@ -35,8 +35,8 @@ export default function ReleasesPage() {
           <tbody>
             {releases.map((r) => (
               <tr key={r.id}>
-                <td style={{ fontFamily: "Courier New, monospace", fontSize: 10 }}>{r.id}</td>
-                <td style={{ fontFamily: "Courier New, monospace", fontSize: 10 }}>{r.bindingId}</td>
+                <td style={{ fontFamily: "Courier New, monospace", fontSize: 12 }}>{r.id}</td>
+                <td style={{ fontFamily: "Courier New, monospace", fontSize: 12 }}>{r.bindingId}</td>
                 <td>第 {r.revisionNo} 次</td>
                 <td>{r.modelNodeId}</td>
                 <td>
@@ -58,7 +58,7 @@ export default function ReleasesPage() {
                   </span>
                 </td>
                 <td>{r.reason}</td>
-                <td style={{ fontSize: 11 }}>{new Date(r.createdAt).toLocaleString("zh-CN")}</td>
+                <td style={{ fontSize: 12 }}>{new Date(r.createdAt).toLocaleString("zh-CN")}</td>
               </tr>
             ))}
           </tbody>

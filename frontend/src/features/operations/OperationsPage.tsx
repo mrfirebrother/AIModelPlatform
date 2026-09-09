@@ -49,8 +49,8 @@ export default function OperationsPage() {
               <div className="card-section-hint">{"共"} {logsTotal} {"条 · 第"} {logPage + 1} {"页"}</div>
             </div>
             <div style={{ display: "flex", gap: 6 }}>
-              <button className="btn small" disabled={logPage === 0} onClick={() => setLogPage((p) => Math.max(0, p - 1))} style={{ fontSize: 10 }}>{"上一页"}</button>
-              <button className="btn small" disabled={(logPage + 1) * pageSize >= logsTotal} onClick={() => setLogPage((p) => p + 1)} style={{ fontSize: 10 }}>{"下一页"}</button>
+              <button className="btn small" disabled={logPage === 0} onClick={() => setLogPage((p) => Math.max(0, p - 1))} style={{ fontSize: 12 }}>{"上一页"}</button>
+              <button className="btn small" disabled={(logPage + 1) * pageSize >= logsTotal} onClick={() => setLogPage((p) => p + 1)} style={{ fontSize: 12 }}>{"下一页"}</button>
             </div>
           </div>
           <div>

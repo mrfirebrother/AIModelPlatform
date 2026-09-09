@@ -115,17 +115,17 @@ export default function DatasetAnnotatePage() {
           上传图片
           <input type="file" multiple accept="image/*" style={{ display: "none" }} onChange={(e) => handleUpload(e.target.files)} />
         </label>
-        <select value={mode} onChange={(e) => setMode(e.target.value as any)} style={{ padding: "6px 8px", border: "1px solid #bed2df", borderRadius: 3 }}>
+        <select value={mode} onChange={(e) => setMode(e.target.value as any)} style={{ padding: "6px 8px", border: "1px solid var(--surface-border)", borderRadius: 3 }}>
           <option value="bbox">框选</option>
           <option value="polygon">多边形</option>
         </select>
         {classNames.length > 0 && (
-          <select value={classId} onChange={(e) => setClassId(Number(e.target.value))} style={{ padding: "6px 8px", border: "1px solid #bed2df", borderRadius: 3 }}>
+          <select value={classId} onChange={(e) => setClassId(Number(e.target.value))} style={{ padding: "6px 8px", border: "1px solid var(--surface-border)", borderRadius: 3 }}>
             {classNames.map((c, i) => <option key={i} value={i}>{c}</option>)}
           </select>
         )}
         {classNames.length === 0 && (
-          <span style={{ fontSize: 11, color: "var(--text-muted)", padding: "6px 0" }}>无标注类别（负例模式）</span>
+          <span style={{ fontSize: 12, color: "var(--text-muted)", padding: "6px 0" }}>无标注类别（负例模式）</span>
         )}
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 200px", gap: 12 }}>
@@ -140,12 +140,12 @@ export default function DatasetAnnotatePage() {
           <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
             <button className="btn small" onClick={() => setCurrent((c) => Math.max(0, c - 1))}>上一张</button>
             <button className="btn small" onClick={() => setCurrent((c) => Math.min(images.length - 1, c + 1))}>下一张</button>
-            <span style={{ fontSize: 11, color: "var(--text-muted)", alignSelf: "center" }}>{current + 1} / {images.length}</span>
+            <span style={{ fontSize: 12, color: "var(--text-muted)", alignSelf: "center" }}>{current + 1} / {images.length}</span>
           </div>
         </div>
         <div className="card" style={{ padding: 8 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-            <label style={{ fontSize: 11, fontWeight: 600, display: "flex", alignItems: "center", gap: 4, cursor: "pointer" }}>
+            <label style={{ fontSize: 12, fontWeight: 600, display: "flex", alignItems: "center", gap: 4, cursor: "pointer" }}>
               <input type="checkbox" checked={selected.size === images.length && images.length > 0} onChange={(e) => { if (e.target.checked) setSelected(new Set(images)); else setSelected(new Set()); }} />
               全选 ({selected.size}/{images.length})
             </label>
@@ -164,11 +164,11 @@ export default function DatasetAnnotatePage() {
           </div>
           <div style={{ maxHeight: 400, overflowY: "auto" }}>
             {images.map((img, idx) => (
-              <div key={img} style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 6px", borderBottom: "1px solid #f0f4f8", background: idx === current ? "#e7f1fa" : undefined }}>
+              <div key={img} style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 6px", borderBottom: "1px solid var(--surface-border)", background: idx === current ? "#e6f4ff" : undefined }}>
                 <input type="checkbox" checked={selected.has(img)} onChange={(e) => {
                   setSelected((prev) => { const next = new Set(prev); if (e.target.checked) next.add(img); else next.delete(img); return next; });
                 }} onClick={(e) => e.stopPropagation()} />
-                <span onClick={() => setCurrent(idx)} style={{ flex: 1, cursor: "pointer", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{img}</span>
+                <span onClick={() => setCurrent(idx)} style={{ flex: 1, cursor: "pointer", fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{img}</span>
               </div>
             ))}
           </div>

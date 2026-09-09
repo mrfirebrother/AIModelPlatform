@@ -37,16 +37,15 @@ const pageTitles: Record<string, string> = {
   "/api-test": "API 接口",
   "/datasets/create": "新建数据集",
   "/operations": "运维管理",
+  "/training/create": "新建训练任务",
 };
 
 function Sidebar() {
   return (
     <aside className="sidebar">
       <div className="brand">
-        <div className="brand-mark">
-          <i /> AI Model Platform
-        </div>
-        <h1>AI 模型服务平台</h1>
+        <div className="logo-mark">AI</div>
+        <div className="brand-name">AI 模型平台</div>
       </div>
 
       <div className="nav-label">工作台</div>
@@ -63,7 +62,7 @@ function Sidebar() {
         ))}
       </nav>
 
-      <div className="nav-label" style={{ marginTop: 20 }}>控制中心</div>
+      <div className="nav-label">控制中心</div>
       <nav className="nav">
         {navItems2.map((item) => (
           <NavLink
@@ -90,34 +89,33 @@ function Sidebar() {
 
 export function AppRoutes() {
   const location = useLocation();
-  const title = pageTitles[location.pathname] || "管理后台";
+  const title = pageTitles[location.pathname] || (location.pathname.startsWith("/models/") ? "模型详情" : "管理后台");
 
   return (
     <>
       <Sidebar />
       <main className="main-content">
-        <header className="topbar">
-          <div>
-            <div className="eyebrow">平台状态 / 内部管理台</div>
+        <div className="page-content">
+          <div className="page-title">
             <h2>{title}</h2>
           </div>
-        </header>
 
-        <Routes>
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
-          <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="/models" element={<ModelsPage />} />
-          <Route path="/models/:id" element={<ModelDetailPage />} />
-          <Route path="/bindings" element={<BindingsPage />} />
-          <Route path="/datasets" element={<DatasetsPage />} />
-          <Route path="/training" element={<TrainingPage />} />
-          <Route path="/training/create" element={<TrainingCreatePage />} />
-          <Route path="/evaluations" element={<EvaluationsPage />} />
-          <Route path="/releases" element={<ReleasesPage />} />
-          <Route path="/resources" element={<ResourcesPage />} />
-          <Route path="/api-test" element={<ApiTestPage />} />
-          <Route path="/operations" element={<OperationsPage />} />
-        </Routes>
+          <Routes>
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/models" element={<ModelsPage />} />
+            <Route path="/models/:id" element={<ModelDetailPage />} />
+            <Route path="/bindings" element={<BindingsPage />} />
+            <Route path="/datasets" element={<DatasetsPage />} />
+            <Route path="/training" element={<TrainingPage />} />
+            <Route path="/training/create" element={<TrainingCreatePage />} />
+            <Route path="/evaluations" element={<EvaluationsPage />} />
+            <Route path="/releases" element={<ReleasesPage />} />
+            <Route path="/resources" element={<ResourcesPage />} />
+            <Route path="/api-test" element={<ApiTestPage />} />
+            <Route path="/operations" element={<OperationsPage />} />
+          </Routes>
+        </div>
       </main>
     </>
   );

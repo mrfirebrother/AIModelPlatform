@@ -36,7 +36,7 @@ export default function TrainingPage() {
 
   useEffect(() => { const t = setTimeout(() => setSearch(searchInput.trim().toLowerCase()), 300); return () => clearTimeout(t); }, [searchInput]);
 
-  const fetchTasks = async () => { setLoading(true); try { setTasks(await api.getTrainingTasks()); } catch {} setLoading(false); };
+  const fetchTasks = async () => { try { setTasks(await api.getTrainingTasks()); } catch {} setLoading(false); };
   useEffect(() => { fetchTasks(); }, [api]);
 
   useEffect(() => {
@@ -170,7 +170,7 @@ export default function TrainingPage() {
               <div className="drawer-section">
                 <div className="drawer-section-title">概览</div>
                 {logs ? (
-                  <div style={{ fontSize: 11, lineHeight: 1.5 }}>
+                  <div style={{ fontSize: 12, lineHeight: 1.5 }}>
                     <div>{"状态："}<span className={`badge ${STATUS_BADGE[logs.status]}`}>{STATUS_LABEL[logs.status] || logs.status}</span></div>
                     <div>{"进度："}{logs.currentEpoch} / {logs.totalEpochs}</div>
                     <div className="drawer-progress">
@@ -180,7 +180,7 @@ export default function TrainingPage() {
                     <div>{"尝试："}{logs.attempts?.length || 0}</div>
                     <div>{"创建："}{formatTime((selected as any).createdAt)} {"· 耗时"} {selected.status === "running" ? durationLabel((selected as any).createdAt) : logs.attempts?.[0] ? durationLabel(logs.attempts[0].startedAt, logs.attempts[0].finishedAt) : "—"}</div>
                   </div>
-                ) : detailErr ? <div style={{ fontSize: 11, color: "#c44" }}>{detailErr} <button className="btn small" onClick={() => setSelectedId(selected.id)}>重试</button></div> : <div className="cell-text-muted">加载中...</div>}
+                ) : detailErr ? <div style={{ fontSize: 12, color: "#c44" }}>{detailErr} <button className="btn small" onClick={() => setSelectedId(selected.id)}>重试</button></div> : <div className="cell-text-muted">加载中...</div>}
               </div>
               <div className="drawer-section">
                 <div className="drawer-section-title">指标</div>
@@ -193,7 +193,7 @@ export default function TrainingPage() {
                 ) : <div className="cell-text-muted" style={{ marginBottom: 8 }}>{selected.status === "running" ? "训练中 —" : "暂无指标"}</div>}
                 {metrics && lossStats ? (
                   <div>
-                    {metrics.bestLoss !== null && <div style={{ fontSize: 10, marginBottom: 6 }}>{"最佳 Loss: "}{metrics.bestLoss.toFixed(4)}</div>}
+                    {metrics.bestLoss !== null && <div style={{ fontSize: 12, marginBottom: 6 }}>{"最佳 Loss: "}{metrics.bestLoss.toFixed(4)}</div>}
                     {lossStats.arr.map((ep: any) => {
                       const w = lossStats.arr.length === 1 ? 100 : lossStats.max === lossStats.min ? 50 : Math.round(((lossStats.max - ep.loss) / (lossStats.max - lossStats.min)) * 100);
                       return (
@@ -210,7 +210,7 @@ export default function TrainingPage() {
               <div className="drawer-section">
                 <div className="drawer-section-title">产物</div>
                 {checkpoint?.latestCheckpoint ? (
-                  <div style={{ fontSize: 11, lineHeight: 1.7 }}>
+                  <div style={{ fontSize: 12, lineHeight: 1.7 }}>
                     <div>Epoch: <b>{checkpoint.latestCheckpoint.epoch}</b></div>
                     <div className="artifact-row">
                       <span className="artifact-path" title={checkpoint.latestCheckpoint.artifactPath}>{checkpoint.latestCheckpoint.artifactPath}</span>

@@ -120,11 +120,11 @@ export default function DatasetsPage() {
           {uploadError && <div style={{ marginTop: 10, color: "#b33", fontSize: 12 }}>{uploadError}</div>}
           <div style={{ marginTop: 14, display: "flex", alignItems: "flex-start", gap: 12 }}>
             <button className="btn" onClick={() => { setShowImport(false); setUploadError(null); }}>取消</button>
-            <div style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.6 }}>
+            <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.6 }}>
               <div style={{ fontWeight: 600, marginBottom: 2 }}>压缩包目录结构要求（二选一）：</div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                <div style={{ fontFamily: "Courier New, monospace", fontSize: 10, background: "#f8fafc", padding: "8px 10px", borderRadius: 4, border: "1px solid #e6eef6", lineHeight: 1.7 }}>
-                  <div style={{ fontWeight: 600, fontFamily: "inherit", fontSize: 10, marginBottom: 2, color: "var(--text-secondary)" }}>结构A：按 split 分目录</div>
+                <div style={{ fontFamily: "Courier New, monospace", fontSize: 12, background: "#f8fafc", padding: "8px 10px", borderRadius: 4, border: "1px solid var(--surface-border)", lineHeight: 1.7 }}>
+                  <div style={{ fontWeight: 600, fontFamily: "inherit", fontSize: 12, marginBottom: 2, color: "var(--text-secondary)" }}>结构A：按 split 分目录</div>
                   dataset.zip<br/>
                   &nbsp;&nbsp;├── data.yaml<br/>
                   &nbsp;&nbsp;├── train/<br/>
@@ -137,8 +137,8 @@ export default function DatasetsPage() {
                   &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├── images/<br/>
                   &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└── labels/
                 </div>
-                <div style={{ fontFamily: "Courier New, monospace", fontSize: 10, background: "#f8fafc", padding: "8px 10px", borderRadius: 4, border: "1px solid #e6eef6", lineHeight: 1.7 }}>
-                  <div style={{ fontWeight: 600, fontFamily: "inherit", fontSize: 10, marginBottom: 2, color: "var(--text-secondary)" }}>结构B：按类型分目录</div>
+                <div style={{ fontFamily: "Courier New, monospace", fontSize: 12, background: "#f8fafc", padding: "8px 10px", borderRadius: 4, border: "1px solid var(--surface-border)", lineHeight: 1.7 }}>
+                  <div style={{ fontWeight: 600, fontFamily: "inherit", fontSize: 12, marginBottom: 2, color: "var(--text-secondary)" }}>结构B：按类型分目录</div>
                   dataset.zip<br/>
                   &nbsp;&nbsp;├── data.yaml<br/>
                   &nbsp;&nbsp;├── images/<br/>
@@ -151,7 +151,7 @@ export default function DatasetsPage() {
                   &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└── test/
                 </div>
               </div>
-              <div style={{ marginTop: 4, fontSize: 10 }}>data.yaml 需含 names 字段，labels/*.txt 为 YOLO 格式，空文件 = 负例。test 目录可选。</div>
+              <div style={{ marginTop: 4, fontSize: 12 }}>data.yaml 需含 names 字段，labels/*.txt 为 YOLO 格式，空文件 = 负例。test 目录可选。</div>
             </div>
           </div>
         </div>

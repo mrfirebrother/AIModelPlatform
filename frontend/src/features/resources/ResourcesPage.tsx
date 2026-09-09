@@ -147,16 +147,16 @@ export default function ResourcesPage() {
                       <div style={{ color: "var(--text)", fontSize: 12, fontWeight: 600 }}>
                         {m.modelName}
                       </div>
-                      <div style={{ color: "var(--text-muted)", fontSize: 9, fontFamily: "Courier New, monospace", marginTop: 2 }}>
+                      <div style={{ color: "var(--text-muted)", fontSize: 12, fontFamily: "Courier New, monospace", marginTop: 2 }}>
                         {m.gpuDevice} / {(m.memoryMb / 1024).toFixed(1)} GB
                       </div>
                     </div>
-                    <span className="online" style={{ fontSize: 9 }}>已加载</span>
+                    <span className="online" style={{ fontSize: 12 }}>已加载</span>
                     <button
                       className="card-action"
                       onClick={() => handleUnload(m.modelName)}
                       disabled={loading}
-                      style={{ fontSize: 10, padding: "4px 8px" }}
+                      style={{ fontSize: 12, padding: "4px 8px" }}
                     >
                       卸载
                     </button>
@@ -167,7 +167,7 @@ export default function ResourcesPage() {
 
             <hr style={{ border: "none", borderTop: "1px solid #d7e5ed", margin: "16px 0" }} />
 
-            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text)", marginBottom: 8 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", marginBottom: 8 }}>
               加载模型
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 80px auto", gap: 8, alignItems: "center" }}>
@@ -250,7 +250,7 @@ export default function ResourcesPage() {
 
             <hr style={{ border: "none", borderTop: "1px solid #d7e5ed", margin: "16px 0" }} />
 
-            <div style={{ color: "var(--text-secondary)", fontSize: 11, lineHeight: 1.6 }}>
+            <div style={{ color: "var(--text-secondary)", fontSize: 12, lineHeight: 1.6 }}>
               <div style={{ marginBottom: 4, fontWeight: 600, color: "var(--text)" }}>
                 说明
               </div>

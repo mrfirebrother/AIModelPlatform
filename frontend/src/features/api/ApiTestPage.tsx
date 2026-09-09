@@ -31,11 +31,6 @@ export default function ApiTestPage() {
 
   return (
     <>
-      <div style={{ marginBottom: 16 }}>
-        <div className="eyebrow">API 测试</div>
-        <div style={{ fontSize: 20, fontWeight: 600, marginTop: 4 }}>模型推理测试</div>
-      </div>
-
       <section className="api-test-layout">
         <div className="card" style={{ padding: 0, overflow: "hidden", minWidth: 0 }}>
           <div className="card-section-header"><div className="card-section-title">{"接口说明"}</div></div>
@@ -45,7 +40,7 @@ export default function ApiTestPage() {
               <div style={{ marginBottom: 6 }}>Content-Type: multipart/form-data</div>
               <div style={{ marginBottom: 10 }}>{"参数: "} <span className="api-field">file</span> {"(图片文件)"}</div>
               <div style={{ color: "var(--text-muted)", marginBottom: 4 }}>{"响应字段:"}</div>
-              <div style={{ fontSize: 9, lineHeight: 1.7 }}>
+              <div style={{ fontSize: 12, lineHeight: 1.7 }}>
                 <div><span className="api-method">model_code</span> {"— 模型编号"}</div>
                 <div><span className="api-method">model_name</span> {"— 模型名称"}</div>
                 <div><span className="api-method">detections</span> {"— 检测结果数组"}</div>
@@ -66,25 +61,25 @@ export default function ApiTestPage() {
             <div style={{ padding: "10px 12px" }}>
               <div style={{ display: "grid", gridTemplateColumns: "0.25fr 1fr auto", gap: 10, alignItems: "center" }}>
                 <div>
-                  <div style={{ fontSize: 9, color: "var(--text-muted)", marginBottom: 4 }}>{"选择模型"}</div>
-                  <select value={selectedCode} onChange={(e) => { setSelectedCode(e.target.value); setResult(null); setError(null); }} style={{ width: "100%", padding: "7px 10px", border: "1px solid #bed2df", borderRadius: 3, fontSize: 11, background: "#f6fafc" }}>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }}>{"选择模型"}</div>
+                  <select value={selectedCode} onChange={(e) => { setSelectedCode(e.target.value); setResult(null); setError(null); }} style={{ width: "100%", padding: "7px 10px", border: "1px solid var(--surface-border)", borderRadius: 3, fontSize: 12, background: "#ffffff" }}>
                     {models.map((m) => <option key={m.id} value={m.code || ""}>{m.code} {"—"} {m.name}</option>)}
                   </select>
                 </div>
                 <div>
-                  <div style={{ fontSize: 9, color: "var(--text-muted)", marginBottom: 4 }}>{"上传图片"}</div>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }}>{"上传图片"}</div>
                   <label className="file-label" style={{ padding: "7px 10px" }}>
                     <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) { setFile(f); setResult(null); setError(null); } }} />
                     {file ? file.name : "选择图片"}
                   </label>
                 </div>
                 <div style={{ paddingTop: 14 }}>
-                  <button className="btn primary" onClick={handleInfer} disabled={!file || loading} style={{ fontSize: 11, minWidth: 80 }}>
+                  <button className="btn primary" onClick={handleInfer} disabled={!file || loading} style={{ fontSize: 12, minWidth: 80 }}>
                     {loading ? "推理中..." : "开始推理"}
                   </button>
                 </div>
               </div>
-              {error && <div style={{ fontSize: 11, color: "#c44", marginTop: 8 }}>{error}</div>}
+              {error && <div style={{ fontSize: 12, color: "#c44", marginTop: 8 }}>{error}</div>}
             </div>
           </div>
 
@@ -98,10 +93,10 @@ export default function ApiTestPage() {
                 {result.overlay_image ? (
                   <div className="infer-image-wrap"><img src={`data:image/jpeg;base64,${result.overlay_image}`} /></div>
                 ) : (
-                  <div style={{ padding: 20, textAlign: "center", color: "var(--text-muted)", fontSize: 11, border: "1px solid #e6eef6", borderRadius: 6 }}>{"无检测结果图片"}</div>
+                  <div style={{ padding: 20, textAlign: "center", color: "var(--text-muted)", fontSize: 12, border: "1px solid var(--surface-border)", borderRadius: 6 }}>{"无检测结果图片"}</div>
                 )}
                 <div>
-                  <div style={{ fontSize: 10, fontWeight: 600, marginBottom: 6, color: "var(--text-secondary)" }}>{"检测列表"}</div>
+                  <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6, color: "var(--text-secondary)" }}>{"检测列表"}</div>
                   {result.detections.length === 0 ? (
                     <div className="cell-text-muted">{"未检测到目标"}</div>
                   ) : result.detections.map((d, i) => (
@@ -123,7 +118,7 @@ export default function ApiTestPage() {
           )}
 
           {!result && !loading && (
-            <div style={{ padding: 20, textAlign: "center", color: "var(--text-muted)", fontSize: 11, border: "1px dashed #bed2df", borderRadius: 6 }}>
+            <div style={{ padding: 20, textAlign: "center", color: "var(--text-muted)", fontSize: 12, border: "1px dashed var(--surface-border)", borderRadius: 6 }}>
               {"选择模型 → 上传图片 → 点击“开始推理”查看结果"}
             </div>
           )}

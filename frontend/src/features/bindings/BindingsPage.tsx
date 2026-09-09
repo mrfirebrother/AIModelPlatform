@@ -41,8 +41,8 @@ export default function BindingsPage() {
               </thead>
               <tbody>
                 {bindings.map((b) => (
-                  <tr key={b.id} onClick={() => setSelected(b.id)} style={{ cursor: "pointer", background: selected === b.id ? "#e7f1fa" : undefined }}>
-                    <td style={{ fontFamily: "Courier New, monospace", fontSize: 10 }}>{b.id}</td>
+                  <tr key={b.id} onClick={() => setSelected(b.id)} style={{ cursor: "pointer", background: selected === b.id ? "#e6f4ff" : undefined }}>
+                    <td style={{ fontFamily: "Courier New, monospace", fontSize: 12 }}>{b.id}</td>
                     <td>{b.name}</td>
                     <td>
                       <span className={`badge ${b.status === "active" ? "badge-green" : b.status === "unbound" ? "badge-gray" : "badge-orange"}`}>

@@ -45,7 +45,7 @@ export default function DashboardPage() {
           { k: "已完成", v: completed.length, sub: completed.length ? "次训练" : "暂无完成", icon: "✓", bg: completed.length ? "rgba(26,138,117,0.08)" : "rgba(0,0,0,0.02)", bd: completed.length ? "#1a8a75" : "#d8e5ef" },
           { k: "评估", v: evals.length, sub: evals.filter((e: any) => e.autoStatus === "passed").length + " 通过", icon: "◎", bg: evals.length ? "rgba(139,92,246,0.06)" : "rgba(0,0,0,0.02)", bd: evals.length ? "#8b5cf6" : "#d8e5ef" },
         ].map(({ k, v, sub, icon, bg, bd }) => (
-          <div key={k} className="grid-card kpi-card" style={{ borderTop: `2px solid ${bd}`, background: `linear-gradient(180deg, ${bg} 0%, #fff 60%)` }}>
+          <div key={k} className="grid-card kpi-card">
             <div className="kpi-top">
               <span className="kpi-label">{k}</span>
               <span className="kpi-icon" style={{ background: bd }}>{icon}</span>
@@ -105,7 +105,7 @@ export default function DashboardPage() {
                     <div className="eval-summary-icon" style={{ background: latest.metrics ? "rgba(26,138,117,0.12)" : "rgba(0,0,0,0.05)" }}>{latest.metrics ? "◆" : "○"}</div>
                     <div>
                       <div style={{ fontWeight: 600, fontSize: 12 }}>{latest.modelName}</div>
-                      <div style={{ fontSize: 9, color: "var(--text-muted)" }}>{latest.datasetName}</div>
+                      <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{latest.datasetName}</div>
                     </div>
                     <span className={`badge badge-xs ${latest.metrics ? "badge-green" : (latest as any).autoStatus === "failed" ? "badge-red" : "badge-orange"}`} style={{ marginLeft: "auto" }}>
                       {latest.metrics ? `${(latest.metrics.mAP50 * 100).toFixed(1)}%` : (latest as any).autoStatus}

@@ -4,7 +4,7 @@ export default function LoadingSpinner({ text = "加载中..." }: { text?: strin
       <div style={{
         width: 28,
         height: 28,
-        border: "3px solid #e6eef6",
+        border: "3px solid var(--surface-border)",
         borderTopColor: "var(--primary)",
         borderRadius: "50%",
         animation: "spin 0.8s linear infinite",

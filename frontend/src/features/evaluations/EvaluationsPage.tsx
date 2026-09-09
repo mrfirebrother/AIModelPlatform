@@ -180,7 +180,7 @@ export default function EvaluationsPage() {
               {current.metrics?.per_class && Object.keys(current.metrics.per_class).length > 0 && (
                 <div className="eval-section">
                   <div className="eval-section-title"><div className="accent-bar" />分类指标</div>
-                  <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 8 }}>{"各类别的 Precision / Recall，识别问题类别"}</div>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8 }}>{"各类别的 Precision / Recall，识别问题类别"}</div>
                   <div>
                     <div className="class-metrics-header"><span>{"类别"}</span><span>Precision</span><span>Recall</span></div>
                     {Object.entries(current.metrics.per_class as Record<string, { recall: number; precision: number }>).map(([clsId, cls]) => {
@@ -208,17 +208,17 @@ export default function EvaluationsPage() {
 
               <div className="eval-section">
                 <div className="eval-section-title"><div className="section-accent-bar" style={{ background: "var(--accent-cyan)" }} />测试推理</div>
-                <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 8 }}>{"上传图片，用该模型做检测"}</div>
+                <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8 }}>{"上传图片，用该模型做检测"}</div>
                 <label className="file-label">
                   <input type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) handleInfer(f); }} />
                   {"选择图片上传推理"}
                 </label>
                 {inferLoading && <div style={{ marginTop: 8 }} className="cell-text-muted">{"推理中..."}</div>}
-                {inferError && <div style={{ marginTop: 8, fontSize: 11, color: "#c44" }}>{inferError}</div>}
+                {inferError && <div style={{ marginTop: 8, fontSize: 12, color: "#c44" }}>{inferError}</div>}
                 {inferResult && inferImageUrl && (
                   <div style={{ marginTop: 10 }}>
                     <InferResultCanvas result={inferResult} imageUrl={inferImageUrl} />
-                    <div style={{ marginTop: 6, fontSize: 10, color: "var(--text-muted)", display: "flex", gap: 12 }}>
+                    <div style={{ marginTop: 6, fontSize: 12, color: "var(--text-muted)", display: "flex", gap: 12 }}>
                       <span>{"耗时"} {inferResult.latency_ms}ms</span>
                       <span>{inferResult.detections.length} 个检测框</span>
                     </div>

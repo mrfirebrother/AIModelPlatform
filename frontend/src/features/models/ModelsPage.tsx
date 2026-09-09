@@ -172,7 +172,7 @@ function ModelLineage({ root, allNodes, onNavigate, onDelete, deleting }: { root
             return (
               <div key={n.id} onClick={() => onNavigate(n.id)} className={`tree-node-card ${isRoot ? "root" : "child"}`} style={{ position: "absolute", left: pos.x, top: pos.y, width: isRoot ? ROOT_W : NODE_W, zIndex: 1 }}>
                 {!isRoot && byParent(n.id).length === 0 && (
-                  <button className="btn small danger" onClick={(e) => { e.stopPropagation(); onDelete(n.id); }} disabled={deleting === n.id} title="删除" style={{ position: "absolute", top: 4, right: 4, padding: "0 4px", fontSize: 11, lineHeight: "16px", minWidth: 0 }}>{"×"}</button>
+                  <button className="btn small danger" onClick={(e) => { e.stopPropagation(); onDelete(n.id); }} disabled={deleting === n.id} title="删除" style={{ position: "absolute", top: 4, right: 4, padding: "0 4px", fontSize: 12, lineHeight: "16px", minWidth: 0 }}>{"×"}</button>
                 )}
                 <div className="node-type">{isRoot ? "根模型" : "子模型"}</div>
                 <div className="node-name">{n.name || n.modelFamily || "未命名"}</div>
