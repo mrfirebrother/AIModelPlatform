@@ -377,9 +377,28 @@ function Start-Platform($settings) {
 function Show-Status($settings) {
     Write-Head '计划任务'
     $missing = @()
+    $unknown = @()
+    $elevated = Test-Admin
     foreach ($name in ($script:Tasks + 'AIP-Watchdog')) {
         $t = Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue
-        if (-not $t) { Write-Warn2 "$name 未注册（任务已丢失）"; $missing += $name; continue }
+        if (-not $t) {
+            # 坑：非管理员会话下，任务**存在**也可能因为 ACL 报 Access denied，而 PowerShell 的
+            # Get-ScheduledTask 把它统一报成“找不到” —— 直接当成缺失会误报（实测踩过：谎报两个任务丢失）。
+            # 用 schtasks 的原始文案区分“真的没有”和“读不到”。走 cmd /c 把 stderr 并进 stdout，
+            # 否则 PowerShell 会把 Access denied 当 NativeCommandError 打到屏幕上（噪音 + 干扰判断）。
+            $probe = (cmd /c "schtasks /query /tn `"$name`" 2>&1") -join ' '
+            if ($probe -match 'Access is denied|拒绝访问') {
+                Write-Warn2 "$name 读不到（Access denied）—— 需管理员确认"
+                $unknown += $name
+            } elseif ($elevated -or $probe -match 'cannot find|找不到') {
+                Write-Warn2 "$name 未注册（任务已丢失）"
+                $missing += $name
+            } else {
+                Write-Warn2 "$name 状态无法确认"
+                $unknown += $name
+            }
+            continue
+        }
         $info = Get-ScheduledTaskInfo -TaskName $name -ErrorAction SilentlyContinue
         $trig = ($t.Triggers | ForEach-Object { $_.CimClass.CimClassName -replace 'MSFT_Task', '' }) -join '+'
         Write-Host ("   {0,-14} {1,-8} {2,-14} 上次结果={3}" -f $name, $t.State, $trig, $(if ($info) { $info.LastTaskResult } else { 'n/a' }))
@@ -388,6 +407,9 @@ function Show-Status($settings) {
         Write-Err "缺失 $($missing.Count) 个任务：$($missing -join ', ')"
         Write-Err '进程可能还在跑（成为孤儿），用【管理员】PowerShell 执行下面这条即可重建并干净重启：'
         Write-Err "  powershell -ExecutionPolicy Bypass -File $PSCommandPath install"
+    }
+    if ($unknown.Count -gt 0) {
+        Write-Info "$($unknown.Count) 个任务无法确认（$($unknown -join ', ')）—— 用管理员重跑 status 即可确认，未必真的丢失"
     }
 
     Write-Head '进程'
@@ -491,9 +513,11 @@ switch ($Action) {
         Stop-Platform $s
         Start-Platform $s
     }
-    'status' { Show-Status (Load-Settings) }
-    'logs' { Show-Logs (Load-Settings) }
+    # status/logs 是信息类命令：即使里面的探测（schtasks 等）返回非零，也不该让调用方以为命令失败
+    'status' { Show-Status (Load-Settings); exit 0 }
+    'logs' { Show-Logs (Load-Settings); exit 0 }
     'watchdog' {
         & $script:WatchdogScript -DataRoot $DataRoot
+        exit 0
     }
 }
