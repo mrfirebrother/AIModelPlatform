@@ -1,5 +1,6 @@
 ﻿from __future__ import annotations
 
+import logging
 import threading
 from pathlib import Path
 from typing import Any
@@ -13,6 +14,9 @@ from backend.app.schemas import CAMEL_CONFIG
 from backend.app.api.dependencies import get_db, get_effective_settings, verify_api_key
 from backend.app.observability.operation_log import log_operation
 from backend.app.services import training_service
+from backend.app.training.training_params import defaults_from_settings, resolve_config
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/training", tags=["training"])
 
@@ -128,13 +132,33 @@ def create_training_task(
     _key: str = Depends(verify_api_key),
 ) -> Any:
     try:
+        # Resolve + validate the parameter surface BEFORE the task exists, for two reasons:
+        # an impossible combination (imgsz 640 + batch 8 on this 4 GB card) must be a 400 with a
+        # readable message rather than a CUDA OOM forty minutes into training; and
+        # `training_config_json` is immutable after insert, so the complete parameter snapshot
+        # has to be written now - the worker cannot back-fill it.
+        settings = get_effective_settings()
+        vram_limit_mb = (
+            None if settings.gpu_device == "cpu" else max(1024, settings.gpu_memory_reservation_mb - 800)
+        )
+        resolved_config, warnings = resolve_config(
+            payload.get_config(),
+            defaults=defaults_from_settings(settings),
+            vram_limit_mb=vram_limit_mb,
+        )
+        for warning in warnings:
+            logger.warning("Training config: %s", warning)
+        if resolved_config.get("device") is None:
+            from backend.app.training.yolo_dataset import YoloDataset
+
+            resolved_config["device"] = YoloDataset.resolve_device(str(settings.gpu_device))
         task = training_service.create_task(
             db,
             parent_model_node_id=payload.parent_model_node_id,
             dataset_snapshot_id=payload.dataset_snapshot_id,
             task_type=payload.task_type,
             model_family=payload.model_family,
-            training_config_json=payload.training_config_json,
+            training_config_json=resolved_config,
             resource_config_json=payload.resource_config_json,
             evaluation_policy_json=payload.evaluation_policy_json,
             created_by=payload.created_by,

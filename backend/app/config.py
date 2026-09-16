@@ -64,6 +64,31 @@ class Settings(BaseSettings):
         validation_alias="TRAINING_DEFAULT_BATCH_SIZE",
     )
 
+    training_default_imgsz: int = Field(
+        default=640,
+        validation_alias="TRAINING_DEFAULT_IMGSZ",
+    )
+
+    training_default_min_map50: float = Field(
+        default=0.0,
+        validation_alias="TRAINING_DEFAULT_MIN_MAP50",
+    )
+
+    training_default_cache: bool = Field(
+        default=False,
+        validation_alias="TRAINING_DEFAULT_CACHE",
+    )
+
+    training_default_patience: int = Field(
+        default=10,
+        validation_alias="TRAINING_DEFAULT_PATIENCE",
+    )
+
+    training_default_augmentation: str = Field(
+        default="default",
+        validation_alias="TRAINING_DEFAULT_AUGMENTATION",
+    )
+
     worker_ready: bool = Field(default=False, validation_alias="WORKER_READY")
 
     @model_validator(mode="after")

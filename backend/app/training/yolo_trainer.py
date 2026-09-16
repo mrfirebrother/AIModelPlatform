@@ -5,6 +5,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from .training_params import (
+    DEFAULT_AUGMENTATION,
+    LOCKED_ARGS,
+    RAW_ARG_BOUNDS,
+    expand_augmentation,
+)
 from .yolo_dataset import YoloDataset
 
 logger = logging.getLogger(__name__)
@@ -56,18 +62,34 @@ class YoloTrainer:
 
         train_args: dict[str, Any] = {
             "data": str(data_yaml),
+            # The platform's parameter surface (see training_params.py).  A task that omits a
+            # value gets TRAINING_DEFAULT_* from train_worker._build_trainer_config, never a
+            # silent ultralytics default.
             "epochs": self.config.get("epochs", 3),
             "imgsz": self.config.get("imgsz", 640),
             "batch": self.config.get("batch", 16),
             "device": self.config.get("device", "cpu"),
             "patience": self.config.get("patience", 10),
-            "workers": 0,  # Avoid daemon processes
-            "amp": False,  # Disable mixed precision
+            "cache": bool(self.config.get("cache", False)),  # TRAINING_DEFAULT_CACHE
+            # Locked on purpose: see training_params.LOCKED_REASONS.
+            "workers": LOCKED_ARGS["workers"],  # no DataLoader spawn under Celery solo/Windows
+            "amp": LOCKED_ARGS["amp"],  # Maxwell (sm_50) has no usable mixed precision
             "project": str(checkpoint_dir),
             "name": "train",
             "exist_ok": True,
             "verbose": False,
         }
+        # The augmentation level expands to the raw coefficients; an explicit raw key in the
+        # task config (API/script use) overrides the level for that one coefficient.
+        train_args.update(expand_augmentation(self.config.get("augmentation", DEFAULT_AUGMENTATION)))
+        for raw_arg in RAW_ARG_BOUNDS:
+            if self.config.get(raw_arg) is not None:
+                train_args[raw_arg] = self.config[raw_arg]
+
+        logger.info(
+            "ultralytics train args: %s",
+            {k: v for k, v in train_args.items() if k != "data"},
+        )
 
         cancel_cb = _CancelCallback(self._check_cancel) if self._check_cancel else None
         if cancel_cb:

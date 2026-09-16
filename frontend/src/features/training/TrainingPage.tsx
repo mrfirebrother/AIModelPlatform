@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from "react";
+﻿import { Fragment, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { createApi } from "../../lib/createApi";
 import { useToast } from "../../lib/toast";
@@ -10,6 +10,23 @@ const STATUS_BADGE: Record<string, string> = { running: "badge-cyan", queued: "b
 const STATUS_ORDER: Record<string, number> = { running: 0, queued: 1, failed: 2, completed: 3, cancelled: 4 };
 
 function taskEpochs(task: TrainingTask): number { const v = (task as any).epochs ?? (task as any).trainingConfigJson?.epochs ?? 0; const n = Number(v); return Number.isFinite(n) ? n : 0; }
+const RECIPE_LABEL: Record<string, string> = { quick: "快速验证", standard: "标准", highres: "高精度", custom: "自定义" };
+const AUG_LABEL: Record<string, string> = { off: "关闭", default: "默认", strong: "强增广" };
+
+/** 本次训练实际生效的参数（创建时写入任务行，行插入后不可变），用于给指标差异归因。 */
+function taskParams(task: TrainingTask): [string, string][] {
+  const cfg = ((task as any).trainingConfigJson || {}) as Record<string, any>;
+  const rows: [string, string][] = [];
+  if (cfg.recipe) rows.push(["配方", RECIPE_LABEL[String(cfg.recipe)] ?? String(cfg.recipe)]);
+  if (cfg.epochs != null) rows.push(["轮数", String(cfg.epochs)]);
+  if (cfg.imgsz != null) rows.push(["分辨率", String(cfg.imgsz)]);
+  if (cfg.batch != null) rows.push(["批大小", String(cfg.batch)]);
+  if (cfg.patience != null) rows.push(["早停", String(cfg.patience)]);
+  if (cfg.augmentation != null) rows.push(["数据增广", AUG_LABEL[String(cfg.augmentation)] ?? String(cfg.augmentation)]);
+  if (cfg.cache != null) rows.push(["图像缓存", cfg.cache ? "开" : "关"]);
+  if (cfg.device != null) rows.push(["设备", String(cfg.device) === "cpu" ? "CPU" : `GPU ${cfg.device}`]);
+  return rows;
+}
 function taskDatasetName(task: TrainingTask): string { return (task as any).datasetName || (task as any).datasetSnapshotId || "未知数据集"; }
 function formatTime(iso?: string): string { if (!iso) return "—"; const d = new Date(iso); return `${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`; }
 function durationLabel(start?: string | null, end?: string | null): string { if (!start) return "—"; const s = new Date(start).getTime(); const e = end ? new Date(end).getTime() : Date.now(); const ms = Math.max(0, e - s); if (ms < 60000) return `${Math.floor(ms/1000)}s`; const m = Math.floor(ms/60000); if (m < 60) return `${m}m`; const h = Math.floor(m/60); const rm = m%60; return rm ? `${h}h ${rm}m` : `${h}h`; }
@@ -206,6 +223,26 @@ export default function TrainingPage() {
                     })}
                   </div>
                 ) : metrics ? <div className="cell-text-muted">{"暂无 Loss"}</div> : null}
+              </div>
+              <div className="drawer-section">
+                <div className="drawer-section-title">训练参数</div>
+                {(() => {
+                  const rows = taskParams(selected);
+                  if (rows.length === 0) return <div className="cell-text-muted">该任务未记录参数（旧任务）</div>;
+                  return (
+                    <>
+                      <div style={{ display: "grid", gridTemplateColumns: "auto 1fr auto 1fr", gap: "4px 10px", fontSize: 12 }}>
+                        {rows.map(([k, v]) => (
+                          <Fragment key={k}>
+                            <span style={{ color: "var(--text-muted)" }}>{k}</span>
+                            <b>{v}</b>
+                          </Fragment>
+                        ))}
+                      </div>
+                      <div className="cell-text-muted" style={{ marginTop: 6, fontSize: 11 }}>本次实际生效的参数，用于对比不同实验</div>
+                    </>
+                  );
+                })()}
               </div>
               <div className="drawer-section">
                 <div className="drawer-section-title">产物</div>

@@ -1,6 +1,7 @@
 ﻿from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import threading
 from datetime import datetime, timezone
@@ -16,6 +17,7 @@ from backend.app.training.resource_scheduler import (
     InsufficientGPUError,
     ResourceScheduler,
 )
+from backend.app.training.training_params import defaults_from_settings, resolve_config
 from backend.app.training.yolo_dataset import DatasetPreparationCancelled, YoloDataset
 from backend.app.training.yolo_trainer import YoloTrainer, TrainResult
 from backend.app.storage.artifacts import compute_file_hash
@@ -28,6 +30,78 @@ from .celery_app import celery_app
 logger = logging.getLogger(__name__)
 
 HEARTBEAT_INTERVAL_SECONDS = 60
+
+
+def _manifest_source_dir(manifest_path: Path) -> str:
+    """Return the ``source_dir`` recorded in a snapshot manifest.
+
+    Snapshot manifests store per-split entries as *relative* paths and keep the
+    directory they are rooted at in a top-level ``source_dir`` field.
+    """
+    try:
+        data = json.loads(manifest_path.read_text(encoding="utf-8-sig"))
+    except Exception:  # noqa: BLE001 - a broken manifest must not abort the merge
+        logger.warning("Could not read source_dir from manifest %s", manifest_path)
+        return ""
+    value = data.get("source_dir")
+    return str(value) if value else ""
+
+
+def _with_absolute_paths(entries: list[dict[str, Any]], source_dir: str) -> list[dict[str, Any]]:
+    """Resolve manifest entries against *source_dir*.
+
+    ``YoloDataset.from_manifest`` copies from ``*_stored_path`` when present and
+    only falls back to ``source_dir`` + relative path otherwise. Populating the
+    stored paths here keeps multi-snapshot merges correct, since entries from
+    different snapshots are rooted at different directories.
+    """
+    if not source_dir:
+        return entries
+    base = Path(source_dir)
+    resolved: list[dict[str, Any]] = []
+    for entry in entries:
+        item = dict(entry)
+        for rel_key, stored_key in (("image", "image_stored_path"), ("label", "label_stored_path")):
+            relative = item.get(rel_key)
+            if not item.get(stored_key) and relative and not Path(relative).is_absolute():
+                item[stored_key] = str(base / relative)
+        resolved.append(item)
+    return resolved
+
+
+def _resolve_training_device(training_config: dict[str, Any]) -> str:
+    """Pick the training device: explicit task config wins, else ``GPU_DEVICE``.
+
+    Tasks created from the UI carry no ``device`` field, so without this fallback
+    they would always train on CPU even when ``GPU_DEVICE`` points at a usable GPU.
+    ``YoloDataset.resolve_device`` degrades to CPU when CUDA is unavailable.
+    """
+    requested = training_config.get("device") or get_settings().gpu_device
+    return YoloDataset.resolve_device(str(requested))
+
+
+def _build_trainer_config(training_config: dict[str, Any], device: str) -> dict[str, Any]:
+    """Resolve the ultralytics arguments for one training run.
+
+    The create route already stores a complete, normalized parameter snapshot in
+    ``training_config_json`` (which is immutable after insert), so this normally just adds the
+    resolved ``device``. Tasks created before a default existed - or hand-written API payloads -
+    still get ``TRAINING_DEFAULT_*`` filled in here, which is why the resolution lives in
+    ``training_params.resolve_config`` and is shared with the route instead of duplicated.
+    """
+    settings = get_settings()
+    try:
+        resolved, warnings = resolve_config(
+            training_config, defaults=defaults_from_settings(settings)
+        )
+    except ValueError as exc:  # e.g. a task created before a validation rule existed
+        logger.warning("Training config rejected by validation (%s); using it as-is", exc)
+        resolved = {**defaults_from_settings(settings), **training_config}
+        warnings = []
+    for warning in warnings:
+        logger.warning("Training config: %s", warning)
+    resolved["device"] = device
+    return resolved
 
 
 def _resolve_dataset_snapshot(
@@ -117,7 +191,7 @@ def run_training(task_id: str) -> str:
 
         training_config = task.training_config_json or {}
 
-        if training_config.get("device", "cpu") != "cpu":
+        if _resolve_training_device(training_config) != "cpu":
             try:
                 import torch
                 if not torch.cuda.is_available():
@@ -177,9 +251,10 @@ def run_training(task_id: str) -> str:
                     if c.semantic_key not in names:
                         names.append(c.semantic_key)
 
-            snap_train = snap.train_manifest_json or []
-            snap_val = snap.val_manifest_json or []
-            snap_test = snap.test_manifest_json or []
+            snap_source_dir = _manifest_source_dir(manifest_path)
+            snap_train = _with_absolute_paths(snap.train_manifest_json or [], snap_source_dir)
+            snap_val = _with_absolute_paths(snap.val_manifest_json or [], snap_source_dir)
+            snap_test = _with_absolute_paths(snap.test_manifest_json or [], snap_source_dir)
             merged_train.extend(snap_train)
             merged_val.extend(snap_val)
             merged_test.extend(snap_test)
@@ -200,7 +275,8 @@ def run_training(task_id: str) -> str:
             "names": names,
         }
 
-        attempt.gpu_device = training_config.get("device")
+        resolved_device = _resolve_training_device(training_config)
+        attempt.gpu_device = None if resolved_device == "cpu" else resolved_device
         session.flush()
 
         try:
@@ -258,11 +334,19 @@ def run_training(task_id: str) -> str:
                     try:
                         from backend.app.evaluation.policy import EvaluationPolicy
                         from backend.app.services.evaluation_service import create_evaluation
-                        policy_json = task.evaluation_policy_json or {}
-                        if policy_json and "min_mAP50" in policy_json:
-                            policy = EvaluationPolicy.from_dict(policy_json)
-                        else:
-                            policy = EvaluationPolicy(min_mAP50=0.0, min_precision=0.0, min_recall=0.0, max_regression_ratio=1.0, require_per_class_coverage=False)
+                        # An all-zero policy lets every model "pass" (0.0 >= 0.0), which makes the
+                        # gate meaningless. Default to the configured threshold and let the task
+                        # payload override any individual field.
+                        default_policy = EvaluationPolicy(
+                            min_mAP50=settings.training_default_min_map50,
+                            min_precision=0.0,
+                            min_recall=0.0,
+                            max_regression_ratio=1.0,
+                            require_per_class_coverage=False,
+                        ).to_dict()
+                        policy = EvaluationPolicy.from_dict(
+                            {**default_policy, **(task.evaluation_policy_json or {})}
+                        )
                         create_evaluation(session, model_node_id=model.id, dataset_snapshot_id=task.dataset_snapshot_id, policy=policy)
                     except Exception as eval_exc:
                         logger.warning("Failed to auto-create evaluation for model %s: %s", model.id, eval_exc)
@@ -312,7 +396,7 @@ def execute_training(
     Does NOT mutate attempt.status -- run_training uses
     complete_attempt/fail_attempt for that.
     """
-    device = training_config.get("device", "cpu")
+    device = _resolve_training_device(training_config)
     cpu_mode = device == "cpu"
     scheduler = ResourceScheduler(session=session, cpu_mode=cpu_mode)
     lease = None
@@ -378,26 +462,55 @@ def execute_training(
         if is_cancel_requested():
             return TrainResult(success=False, epochs_completed=0, best_model_path=None, latest_model_path=None, error="Cancelled during dataset preparation")
 
+        # Parameter snapshot: persist the resolved parameters onto the task so the UI can show
+        # what this run actually used. This gets its OWN commit: coupling it to the heartbeat
+        # below lost the snapshot silently, because that call's `with_for_update` can raise and
+        # its `rollback()` discarded the assignment (observed - the log said "resolved training
+        # parameters" and the row still held the pre-resolution config).
+        attempt_id_value = attempt.id
+        lease_token_value = attempt.lease_token
+        gpu_lease_id_value = lease.id if lease is not None else None
+        gpu_lease_token_value = lease.lease_token if lease is not None else None
+
+        trainer_config = _build_trainer_config(training_config, device)
+        # Log, do not persist: `training_config_json` is immutable after insert
+        # (install_immutable_guard(TrainingTask, …)), so the parameter snapshot is written by
+        # the create route. Attempting it here raises ImmutableFieldError - verified.
+        logger.info(
+            "resolved training parameters for task %s: %s",
+            task.id,
+            {k: trainer_config.get(k) for k in (
+                "epochs", "imgsz", "batch", "patience", "cache", "augmentation", "device", "recipe",
+            ) if k in trainer_config},
+        )
+
+        # This transaction MUST be committed before the (minutes-to-hours) training call.
+        # attempt_heartbeat() takes the attempt row with SELECT ... FOR UPDATE, so leaving
+        # the transaction open for the whole run blocks every other writer on the
+        # task/attempt rows: the API's cancel endpoint waits forever (cancellation never
+        # reaches the database, so the run cannot be stopped from the UI), the heartbeat
+        # thread blocks on its own heartbeat, and the scheduler's lease reconciliation is
+        # frozen. Verified against pg_stat_activity: the worker backend sat "idle in
+        # transaction" with the heartbeat UPDATE as its last statement until training ended.
         try:
-            attempt_heartbeat(session, attempt.id, attempt.lease_token)
-            session.flush()
-        except Exception:
-            logger.warning("Heartbeat failed for attempt %s", attempt.id)
+            attempt_heartbeat(session, attempt_id_value, lease_token_value)
+            session.commit()
+        except Exception as exc:
+            session.rollback()
+            logger.warning("Heartbeat failed for attempt %s: %s", attempt_id_value, exc)
 
         heartbeat_thread = _HeartbeatThread(
             session=session,
-            attempt_id=attempt.id,
-            lease_token=attempt.lease_token,
+            attempt_id=attempt_id_value,
+            lease_token=lease_token_value,
             interval=heartbeat_interval,
             cpu_mode=cpu_mode,
-            gpu_lease_id=lease.id if lease is not None else None,
-            gpu_lease_token=lease.lease_token if lease is not None else None,
+            gpu_lease_id=gpu_lease_id_value,
+            gpu_lease_token=gpu_lease_token_value,
         )
         heartbeat_thread.start()
 
-        trainer = YoloTrainer(
-            training_config, check_cancel=is_cancel_requested
-        )
+        trainer = YoloTrainer(trainer_config, check_cancel=is_cancel_requested)
         result = trainer.train(
             dataset_dir, checkpoint_dir, parent_model_path=parent_model_path
         )
