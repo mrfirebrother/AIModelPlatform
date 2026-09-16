@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
+import yaml
+
 from sqlalchemy.orm import Session
 
 from backend.app.evaluation.metrics import compute_mAP, compute_per_class_metrics
@@ -27,6 +29,8 @@ from backend.app.training.resource_scheduler import (
     InsufficientGPUError,
     ResourceScheduler,
 )
+
+from backend.app.training.yolo_dataset import manifest_source_dir, with_absolute_paths
 
 from .celery_app import celery_app
 
@@ -58,10 +62,15 @@ def run_evaluation(evaluation_id: str) -> str:
             mark_evaluation_failed(session, ev.id, "Dataset snapshot not found")
             session.commit()
             return f"evaluation {evaluation_id} failed: snapshot not found"
+        # Manifest entries hold paths *relative* to the snapshot's source_dir; resolve them
+        # here, otherwise the loaders below find nothing (they used to fall back to
+        # Path("") - i.e. the process CWD - and quietly evaluate zero images).
+        source_dir = manifest_source_dir(Path(snap.manifest_path))
         manifest = {
-            "train_files": snap.train_manifest_json or [],
-            "val_files": snap.val_manifest_json or [],
-            "test_files": snap.test_manifest_json or [],
+            "source_dir": source_dir,
+            "train_files": with_absolute_paths(snap.train_manifest_json or [], source_dir),
+            "val_files": with_absolute_paths(snap.val_manifest_json or [], source_dir),
+            "test_files": with_absolute_paths(snap.test_manifest_json or [], source_dir),
             "nc": len(snap.label_schema.classes) if snap.label_schema else 0,
             "names": [c.semantic_key for c in snap.label_schema.classes] if snap.label_schema else [],
         }
@@ -89,30 +98,61 @@ def execute_evaluation(
         evaluation = mark_evaluation_running(session, evaluation.id)
         session.commit()
 
-        evaluator = YoloEvaluator(
-            confidence_threshold=0.25,
-            iou_threshold=0.45,
-            device="cpu",
+        # Prefer the test split; fall back to val/train when a snapshot has no test images.
+        split = next(
+            (
+                name
+                for name in ("test", "val", "train")
+                if dataset_manifest.get(f"{name}_files")
+            ),
+            "test",
         )
+        num_images = len(dataset_manifest.get(f"{split}_files") or [])
+
+        # CPU on purpose: evaluation takes seconds-to-minutes here, whereas a GPU run would
+        # compete with training for the same card (evaluation takes no GPU lease).
+        evaluator = YoloEvaluator(device="cpu")
         evaluator.load_model(model_path)
 
-        images = _load_dataset_images(dataset_manifest)
-        ground_truths = _load_ground_truths(
-            dataset_manifest,
-            image_sizes=[image.size for image in images],
-        )
+        data_yaml = _write_validation_yaml(dataset_manifest, output_dir, split)
         class_ids = _extract_class_ids(dataset_manifest)
 
-        eval_result = evaluator.evaluate(
-            dataset_images=images,
-            dataset_ground_truths=ground_truths,
-            class_ids=class_ids,
+        # Ultralytics' own validator: full PR curve + the IoU 0.5:0.05:0.95 average, i.e. the same
+        # numbers the training report shows.
+        eval_result = evaluator.validate_on_split(
+            str(data_yaml),
+            split=split,
+            num_images=num_images,
+            output_dir=str(output_dir),
         )
 
         if not eval_result.success:
             mark_evaluation_failed(session, evaluation.id, eval_result.error)
             session.commit()
             return eval_result
+
+        if eval_result.num_images == 0:
+            # Measuring nothing must never read as a pass: the fallback policy has
+            # min_mAP50 = 0.0, so a zero-image run would otherwise be recorded as "passed".
+            reason = (
+                "No evaluation images could be loaded from snapshot "
+                f"{evaluation.dataset_snapshot_id} (manifest paths unresolved?)"
+            )
+            mark_evaluation_failed(session, evaluation.id, reason)
+            session.commit()
+            logger.error("Evaluation %s measured 0 images: %s", evaluation.id, reason)
+            return EvalResult(
+                success=False,
+                mAP50=0.0,
+                mAP50_95=0.0,
+                precision=0.0,
+                recall=0.0,
+                per_class={},
+                num_images=0,
+                num_predictions=0,
+                num_ground_truths=0,
+                error=reason,
+            )
 
         policy_dict = evaluation.evaluation_policy_json
         policy = EvaluationPolicy.from_dict(policy_dict)
@@ -124,8 +164,9 @@ def execute_evaluation(
             "recall": eval_result.recall,
             "per_class": eval_result.per_class,
             "num_images": eval_result.num_images,
-            "num_predictions": eval_result.num_predictions,
-            "num_ground_truths": eval_result.num_ground_truths,
+            # ultralytics' validator reports per-class counts, not a prediction total, so report the
+            # ground-truth count verified from the label files rather than a fake zero.
+            "num_ground_truths": _count_ground_truths(dataset_manifest, split),
         }
 
         test_classes = set(eval_result.per_class.keys())
@@ -205,12 +246,60 @@ def execute_evaluation(
             scheduler.release_gpu(evaluation.id)
 
 
+def _write_validation_yaml(
+    dataset_manifest: dict[str, Any], output_dir: Path, split: str
+) -> Path:
+    """Write the ultralytics ``data.yaml`` used to validate one snapshot split.
+
+    Manifest image paths are absolute (see ``with_absolute_paths``), and ultralytics accepts a text
+    file listing image paths as a split entry - that avoids assuming any images/labels layout.
+    """
+    entries = dataset_manifest.get(f"{split}_files") or []
+    listing = output_dir / f"{split}_images.txt"
+    listing.parent.mkdir(parents=True, exist_ok=True)
+    listing.write_text(
+        "\n".join(
+            str(entry.get("image_stored_path") or entry.get("image"))
+            for entry in entries
+            if entry.get("image_stored_path") or entry.get("image")
+        ),
+        encoding="utf-8",
+    )
+    data = {
+        "path": str(dataset_manifest.get("source_dir") or output_dir),
+        "train": str(listing),
+        "val": str(listing),
+        "test": str(listing),
+        "nc": int(dataset_manifest.get("nc") or 1),
+        "names": dataset_manifest.get("names") or [],
+    }
+    yaml_path = output_dir / "data.yaml"
+    yaml_path.write_text(yaml.safe_dump(data, allow_unicode=True), encoding="utf-8")
+    return yaml_path
+
+
+def _count_ground_truths(dataset_manifest: dict[str, Any], split: str) -> int:
+    """Count ground-truth boxes in one split by reading its YOLO label files."""
+    total = 0
+    for entry in dataset_manifest.get(f"{split}_files") or []:
+        path = entry.get("label_stored_path") or entry.get("label")
+        if not path:
+            continue
+        try:
+            with open(path, encoding="utf-8") as handle:
+                total += sum(1 for line in handle if line.strip())
+        except OSError:
+            continue
+    return total
+
+
 def _load_dataset_images(
     dataset_manifest: dict[str, Any],
 ) -> list[Any]:
     from PIL import Image
     images: list[Any] = []
-    source_dir = Path(dataset_manifest.get("source_dir", ""))
+    raw_source_dir = dataset_manifest.get("source_dir") or ""
+    source_dir = Path(raw_source_dir) if raw_source_dir else None
     for entry in dataset_manifest.get("test_files", []):
         p = entry.get("image_stored_path")
         if not p or not Path(p).exists():
@@ -233,7 +322,8 @@ def _load_ground_truths(
     image_sizes: list[tuple[int, int]] | None = None,
 ) -> list[list[dict[str, Any]]]:
     gts: list[list[dict[str, Any]]] = []
-    source_dir = Path(dataset_manifest.get("source_dir", ""))
+    raw_source_dir = dataset_manifest.get("source_dir") or ""
+    source_dir = Path(raw_source_dir) if raw_source_dir else None
     for index, entry in enumerate(dataset_manifest.get("test_files", [])):
         p = entry.get("label_stored_path")
         if not p or not Path(p).exists():

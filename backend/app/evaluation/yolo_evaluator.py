@@ -87,7 +87,12 @@ class YoloEvaluator:
         return False
 
     def _predict_single(self, model: Any, image: Any) -> list[dict[str, Any]]:
-        results = model(image, verbose=False)
+        results = model(
+            image,
+            verbose=False,
+            device=self.device,
+            conf=self.confidence_threshold,
+        )
         predictions: list[dict[str, Any]] = []
 
         if results and len(results) > 0:
@@ -128,6 +133,80 @@ class YoloEvaluator:
             all_predictions.append(preds)
         return all_predictions
 
+    def validate_on_split(
+        self,
+        data_yaml: str,
+        *,
+        split: str = "test",
+        num_images: int = 0,
+        output_dir: str | None = None,
+    ) -> EvalResult:
+        """Validate the loaded model with ultralytics' own validator.
+
+        This is the trustworthy metric path: ``model.val`` sweeps the full precision/recall curve
+        (conf 0.001 by default) and averages mAP over IoU 0.5:0.05:0.95. ``evaluate()`` below does
+        neither - it filters boxes at ``confidence_threshold`` before computing AP and derives
+        ``mAP50_95`` from a single IoU=0.95 pass - so its numbers are not comparable with
+        ultralytics and must never be used to gate a model.
+
+        Pass *output_dir* so ultralytics writes its run artifacts there; otherwise they land in a
+        ``runs/`` directory relative to the process CWD (i.e. inside the repository).
+        """
+        if self._model is None:
+            raise ValueError("Model not loaded")
+        val_args: dict[str, Any] = {
+            "data": data_yaml,
+            "split": split,
+            "device": self.device,
+            "workers": 0,  # Windows: avoids the multiprocessing spawn bootstrapping problem
+            "plots": False,  # metrics only - plotting needs Arial.ttf, which ultralytics downloads
+            "verbose": False,
+        }
+        if output_dir:
+            val_args.update(project=output_dir, name="val", exist_ok=True)
+        try:
+            metrics = self._model.val(**val_args)
+        except Exception as exc:  # noqa: BLE001 - surfaced through EvalResult
+            logger.error("Validation on %s failed: %s", data_yaml, exc)
+            return EvalResult(
+                success=False,
+                mAP50=0.0,
+                mAP50_95=0.0,
+                precision=0.0,
+                recall=0.0,
+                per_class={},
+                num_images=0,
+                num_predictions=0,
+                num_ground_truths=0,
+                error=str(exc),
+            )
+
+        box = metrics.box
+        per_class: dict[Any, dict[str, float]] = {}
+        for index, class_id in enumerate(box.ap_class_index):
+            per_class[int(class_id)] = {
+                "precision": float(box.p[index]),
+                "recall": float(box.r[index]),
+                "mAP50": float(box.ap50[index]),
+                "mAP50_95": float(box.ap[index]),
+            }
+        ground_truths = 0
+        per_class_counts = getattr(box, "nt_per_class", None)
+        if per_class_counts is not None:
+            ground_truths = int(sum(int(count) for count in per_class_counts))
+        return EvalResult(
+            success=True,
+            mAP50=float(box.map50),
+            mAP50_95=float(box.map),
+            precision=float(box.mp),
+            recall=float(box.mr),
+            per_class=per_class,
+            num_images=num_images,
+            num_predictions=0,
+            num_ground_truths=ground_truths,
+            error=None,
+        )
+
     def _compute_overall_metrics(
         self,
         all_predictions: list[list[dict[str, Any]]],
@@ -157,6 +236,9 @@ class YoloEvaluator:
             "recall": recall,
         }
 
+    # Deprecated for gating: computes AP from boxes already filtered at ``confidence_threshold``
+    # and reports ``mAP50_95`` from a single IoU=0.95 pass. Kept for the in-memory unit tests and
+    # ad-hoc use only - the evaluation worker uses ``validate_on_split`` instead.
     def evaluate(
         self,
         dataset_images: list[Any],

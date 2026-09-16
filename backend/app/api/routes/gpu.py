@@ -6,13 +6,24 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
 from backend.app.api.dependencies import verify_api_key
-from backend.app.runtime.gpu_monitor import GpuMonitor
+from backend.app.runtime.gpu_monitor import build_gpu_monitor
 from backend.app.runtime.model_manager import ModelManager
 
 router = APIRouter(prefix="/api/gpu", tags=["gpu"])
 
-_monitor = GpuMonitor(cpu_mode=True)
+# Real telemetry whenever GPU_DEVICE points at a device; simulated otherwise, and also
+# whenever the driver cannot be queried (the monitor then logs and degrades instead of
+# raising - see GpuMonitor._init_backend).
+_monitor = build_gpu_monitor()
 _manager = ModelManager(gpu_monitor=_monitor)
+
+
+class GpuDeviceEntry(BaseModel):
+    index: int
+    name: str
+    total_memory_mb: int
+    used_memory_mb: int
+    utilization_percent: float
 
 
 class GpuStatusResponse(BaseModel):
@@ -20,6 +31,10 @@ class GpuStatusResponse(BaseModel):
     total_memory_mb: int
     used_memory_mb: int
     free_memory_mb: int
+    # Added so callers can tell real telemetry apart from simulated values.
+    utilization_percent: float = 0.0
+    source: str = "mock"
+    devices: list[GpuDeviceEntry] = []
 
 
 class GpuModelEntry(BaseModel):
@@ -56,13 +71,31 @@ def get_gpu_status(
 ) -> Any:
     all_stats = _monitor.query_all_gpus()
     total = sum(s.total_memory_mb for s in all_stats)
-    used = _manager.get_total_memory_used()
-    free = total - used
+    # Real VRAM in use across all processes, not just the memory this API handed out.
+    used = sum(s.used_memory_mb for s in all_stats)
+    free = max(0, total - used)
+    average_util = (
+        round(sum(s.utilization_percent for s in all_stats) / len(all_stats), 1)
+        if all_stats
+        else 0.0
+    )
     return GpuStatusResponse(
         device_count=len(all_stats),
         total_memory_mb=total,
         used_memory_mb=used,
         free_memory_mb=free,
+        utilization_percent=average_util,
+        source=_monitor.backend,
+        devices=[
+            GpuDeviceEntry(
+                index=s.device_index,
+                name=s.name,
+                total_memory_mb=s.total_memory_mb,
+                used_memory_mb=s.used_memory_mb,
+                utilization_percent=s.utilization_percent,
+            )
+            for s in all_stats
+        ],
     )
 
 

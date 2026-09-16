@@ -1,5 +1,6 @@
 ﻿from __future__ import annotations
 
+import json
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
@@ -10,6 +11,42 @@ import yaml
 
 class DatasetPreparationCancelled(Exception):
     """Raised when a training task is cancelled while copying its snapshot."""
+
+
+def manifest_source_dir(manifest_path: Path) -> str:
+    """Return the ``source_dir`` a snapshot manifest roots its relative paths at."""
+    try:
+        data = json.loads(manifest_path.read_text(encoding="utf-8-sig"))
+    except Exception:  # noqa: BLE001 - a broken manifest must not abort the caller
+        return ""
+    value = data.get("source_dir")
+    return str(value) if value else ""
+
+
+def with_absolute_paths(
+    entries: list[dict[str, Any]], source_dir: str
+) -> list[dict[str, Any]]:
+    """Resolve manifest entries against *source_dir*.
+
+    Snapshot manifests store ``image``/``label`` relative to ``source_dir`` while consumers
+    read ``*_stored_path`` first, so filling those in is what makes the entries usable.
+    (``train_worker`` carries an equivalent private copy of this logic.)
+    """
+    if not source_dir:
+        return entries
+    base = Path(source_dir)
+    resolved: list[dict[str, Any]] = []
+    for entry in entries:
+        item = dict(entry)
+        for rel_key, stored_key in (
+            ("image", "image_stored_path"),
+            ("label", "label_stored_path"),
+        ):
+            relative = item.get(rel_key)
+            if not item.get(stored_key) and relative and not Path(relative).is_absolute():
+                item[stored_key] = str(base / relative)
+        resolved.append(item)
+    return resolved
 
 
 @dataclass
@@ -29,7 +66,10 @@ class YoloDataset:
             (output_dir / "images" / split).mkdir(parents=True, exist_ok=True)
             (output_dir / "labels" / split).mkdir(parents=True, exist_ok=True)
 
-        source_dir = Path(manifest.get("source_dir", ""))
+        # Path("") is Path(".") - truthy - which would resolve relative entries against
+        # the process CWD and fail with a confusing relative FileNotFoundError.
+        raw_source_dir = manifest.get("source_dir") or ""
+        source_dir = Path(raw_source_dir) if raw_source_dir else None
 
         for split in ("train", "val", "test"):
             key = f"{split}_files"
