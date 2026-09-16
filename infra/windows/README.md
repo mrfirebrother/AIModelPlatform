@@ -63,6 +63,33 @@ Direct 模式下 `cmd.exe /c` 是任务动作，子进程被杀后任务理应�
 因此**恢复完全依赖看门狗**，这也是把巡检间隔设为 1 分钟的原因（恢复窗口约 2 分钟）。
 `RestartCount` 仍保留在任务设置里，作为额外一层（不指望它）。
 
+## 故障恢复（2026-09-16 实战记录）
+
+现场：机器在 13:32 被重启（事件 1074，RuntimeBroker 发起），13:34 起来。
+**平台在 13:35 自动恢复**（四个任务 BootTrigger + 45s 延迟）——这是新机制第一次在真实重启里生效。
+（旧方案此时会是"没人登录就没人管"。）
+
+随后发现 `AIP-Beat` 与 `AIP-Watchdog` **两个任务在任务计划程序里消失了**，而它们的进程还在跑（成为孤儿）。
+任务计划程序的操作日志默认关闭，取不到删除者，因此**原因未查明**；处置方式是重建：
+
+```powershell
+# 管理员 PowerShell；会重建 5 个任务、杀掉孤儿进程、干净重启
+powershell -ExecutionPolicy Bypass -File infra\windows\deploy.ps1 install
+```
+
+`status` 现在会明确报出缺失的任务并给出上面这条命令；即便在非管理员下运行，也会说明「SYSTEM 进程的命令行读不到」
+而不是谎报"没有进程"。
+
+**建议开启任务操作日志**，以后再出问题能取证：
+
+```powershell
+wevtutil sl Microsoft-Windows-TaskScheduler/Operational /e:true    # 需管理员
+```
+
+同一轮修掉的脚本缺陷：`Get-PlatformProcesses` 只返回一个进程时 PowerShell 会解包成单对象，
+调用方访问 `.Count` 在 StrictMode 下抛异常 → **`restart` 会停到一半就中断**（实测踩到）。
+现已用 `@()` + `return ,$found` 固定返回数组，并且 `Start-Platform` 对单个任务失败不再中断整轮。
+
 ## 已知取舍与注意事项
 
 * **`-LaunchMode Direct`（默认）**：任务是 `cmd.exe /c <cmd>`，任务计划程序持有整棵进程树，

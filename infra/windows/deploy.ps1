@@ -72,6 +72,11 @@ function Write-Warn2([string]$text) { Write-Host "   [警告] $text" -Foreground
 function Write-Err([string]$text) { Write-Host "   [错误] $text" -ForegroundColor Red }
 
 # --------------------------------------------------------------------------- 默认值
+function Test-Admin {
+    $id = [Security.Principal.WindowsIdentity]::GetCurrent()
+    return (New-Object Security.Principal.WindowsPrincipal($id)).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
 function Resolve-Defaults {
     if (-not $RepoRoot) {
         # infra\windows\deploy.ps1 -> 仓库根
@@ -167,7 +172,7 @@ function Test-Preflight($settings) {
         if ($busy) { Write-Info "端口 $p 已被 PID $($busy[0].OwningProcess) 占用（若那是本平台的旧进程，install 后会接管）" }
     }
 
-    if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    if (-not (Test-Admin)) {
         Write-Err '需要管理员权限（注册 SYSTEM 计划任务与设置服务恢复）'; $ok = $false
     } else {
         Write-Ok '管理员权限'
@@ -315,8 +320,12 @@ function Set-DependencyRecovery($settings) {
 # --------------------------------------------------------------------------- 启停
 function Get-PlatformProcesses($settings) {
     $patterns = 'uvicorn|celery|vite'
-    Get-CimInstance Win32_Process -Filter "Name='python.exe' OR Name='node.exe' OR Name='cmd.exe'" -ErrorAction SilentlyContinue |
-        Where-Object { $_.CommandLine -and ($_.CommandLine -match $patterns) -and ($_.CommandLine -notmatch 'deploy\.ps1|watchdog\.ps1') }
+    # 用 @() 包住并 `return ,$found`：PowerShell 会把「恰好一个结果」解包成对象，
+    # 那样调用方访问 .Count 会抛 PropertyNotFoundException（StrictMode 下直接中断脚本，
+    # 现象是 restart 停到一半就退出）。踩过一次，别再改回去。
+    $found = @(Get-CimInstance Win32_Process -Filter "Name='python.exe' OR Name='node.exe' OR Name='cmd.exe'" -ErrorAction SilentlyContinue |
+        Where-Object { $_.CommandLine -and ($_.CommandLine -match $patterns) -and ($_.CommandLine -notmatch 'deploy\.ps1|watchdog\.ps1') })
+    return , $found
 }
 
 function Stop-Platform($settings) {
@@ -338,9 +347,21 @@ function Stop-Platform($settings) {
 
 function Start-Platform($settings) {
     Write-Head '启动平台'
+    $failed = @()
     foreach ($name in @('AIP-API', 'AIP-Worker', 'AIP-Beat', 'AIP-Frontend')) {
-        Start-ScheduledTask -TaskName $name
-        Write-Ok "$name 已触发"
+        # 单个任务缺失/启动失败不能中断整轮启动（否则只会拉起一半，现象很难查）
+        try {
+            Start-ScheduledTask -TaskName $name -ErrorAction Stop
+            Write-Ok "$name 已触发"
+        } catch {
+            $failed += $name
+            Write-Warn2 "$name 启动失败：$($_.Exception.Message)"
+        }
+    }
+    if ($failed.Count -gt 0) {
+        Write-Err "$($failed.Count) 个任务没能启动：$($failed -join ', ')"
+        Write-Err '多半是任务不存在 —— 用【管理员】PowerShell 重跑 install 重建：'
+        Write-Err "  powershell -ExecutionPolicy Bypass -File $PSCommandPath install"
     }
     Write-Info '进程以 SYSTEM 身份在会话 0 运行，无窗口；等待健康检查…'
     $deadline = (Get-Date).AddSeconds(90)
@@ -355,12 +376,18 @@ function Start-Platform($settings) {
 
 function Show-Status($settings) {
     Write-Head '计划任务'
+    $missing = @()
     foreach ($name in ($script:Tasks + 'AIP-Watchdog')) {
         $t = Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue
-        if (-not $t) { Write-Warn2 "$name 未注册"; continue }
+        if (-not $t) { Write-Warn2 "$name 未注册（任务已丢失）"; $missing += $name; continue }
         $info = Get-ScheduledTaskInfo -TaskName $name -ErrorAction SilentlyContinue
         $trig = ($t.Triggers | ForEach-Object { $_.CimClass.CimClassName -replace 'MSFT_Task', '' }) -join '+'
         Write-Host ("   {0,-14} {1,-8} {2,-14} 上次结果={3}" -f $name, $t.State, $trig, $(if ($info) { $info.LastTaskResult } else { 'n/a' }))
+    }
+    if ($missing.Count -gt 0) {
+        Write-Err "缺失 $($missing.Count) 个任务：$($missing -join ', ')"
+        Write-Err '进程可能还在跑（成为孤儿），用【管理员】PowerShell 执行下面这条即可重建并干净重启：'
+        Write-Err "  powershell -ExecutionPolicy Bypass -File $PSCommandPath install"
     }
 
     Write-Head '进程'
@@ -377,7 +404,11 @@ function Show-Status($settings) {
             }
             Write-Host ("   {0,-9} pid={1,-7} 启动于 {2}" -f $desc, $p.ProcessId, $p.CreationDate)
         }
-    } else { Write-Warn2 '没有任何平台进程在跑' }
+    } else {
+        # 非管理员时读不到 SYSTEM 进程的 CommandLine，这一节会假阴性（实测踩过），必须说清楚
+        if (Test-Admin) { Write-Warn2 '没有任何平台进程在跑' }
+        else { Write-Warn2 '看不到平台进程：非管理员运行读不到 SYSTEM 进程的命令行；请以管理员身份重跑 status，或看下面的端口与健康一节' }
+    }
 
     Write-Head '端口与健康'
     foreach ($p in @($settings.apiPort, $settings.frontendPort)) {
