@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import base64
 import uuid as _uuid
@@ -33,8 +33,9 @@ class EvaluationResponse(BaseModel):
     id: UUID
     model_node_id: UUID
     dataset_snapshot_id: UUID
+    # 评测流水线状态（pending/running/passed/failed），由 worker 与调度器使用。
+    # 注意：这里没有人工复核相关字段 —— 平台不存在审核机制，评测只提供指标。
     auto_status: str
-    human_status: str
     evaluation_policy_json: dict
     auto_metrics_json: dict
     model_name: str
@@ -58,7 +59,6 @@ def _to_evaluation_response(ev: Any) -> EvaluationResponse:
         model_node_id=ev.model_node_id,
         dataset_snapshot_id=ev.dataset_snapshot_id,
         auto_status=ev.auto_status,
-        human_status=ev.human_status,
         evaluation_policy_json=ev.evaluation_policy_json or {},
         auto_metrics_json=metrics,
         model_name=(ev.model_node.name or ev.model_node.model_family),
@@ -136,37 +136,6 @@ def get_evaluation(
     if ev is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Evaluation not found")
     return _to_evaluation_response(ev)
-
-
-@router.post("/{evaluation_id}/review", response_model=EvaluationResponse)
-def review_evaluation(
-    evaluation_id: UUID,
-    payload: dict,
-    db: Session = Depends(get_db),
-    _key: str = Depends(verify_api_key),
-) -> Any:
-    human_status = payload.get("human_status") or payload.get("humanStatus")
-    if human_status not in ("approved", "rejected"):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="human_status must be 'approved' or 'rejected'")
-
-    try:
-        ev = evaluation_service.record_human_review(
-            db,
-            evaluation_id,
-            reviewer="admin",
-            conclusion=human_status,
-        )
-        log_operation(
-            db,
-            operation_type="evaluation.review",
-            resource_type="evaluation",
-            resource_id=ev.id,
-            status="success",
-            summary_json={"evaluation_id": str(ev.id), "human_status": human_status},
-        )
-        return _to_evaluation_response(ev)
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
 
 class InferResult(BaseModel):

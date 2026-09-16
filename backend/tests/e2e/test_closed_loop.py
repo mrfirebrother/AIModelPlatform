@@ -345,7 +345,6 @@ class TestEvaluationAndReview:
         )
 
         assert ev.auto_status == "pending"
-        assert ev.human_status == "pending"
 
     def test_human_review_pass(self, session, builder):
         root = builder.root_model()
@@ -356,11 +355,9 @@ class TestEvaluationAndReview:
             model_node_id=model_node.model_node.id,
             dataset_snapshot_id=ds.snapshot.id,
             auto_status="passed",
-            human_status="passed",
         )
 
         assert ev.auto_status == "passed"
-        assert ev.human_status == "passed"
 
     def test_evaluation_requires_both_pass(self, session, builder):
         root = builder.root_model()
@@ -371,11 +368,10 @@ class TestEvaluationAndReview:
             model_node_id=model_node.model_node.id,
             dataset_snapshot_id=ds.snapshot.id,
             auto_status="passed",
-            human_status="pending",
         )
 
         # Both statuses must be passed for approval
-        both_passed = ev.auto_status == "passed" and ev.human_status == "passed"
+        both_passed = ev.auto_status == "passed"
         assert not both_passed
 
 
@@ -767,10 +763,8 @@ class TestFullLifecycle:
             model_node_id=candidate.id,
             dataset_snapshot_id=ds.snapshot.id,
             auto_status="passed",
-            human_status="passed",
         )
         assert ev.auto_status == "passed"
-        assert ev.human_status == "passed"
 
         # 7. Approve
         candidate.status = "approved"
@@ -969,10 +963,8 @@ class TestRealYoloClosedLoop:
             model_node_id=candidate.id,
             dataset_snapshot_id=ds.snapshot.id,
             auto_status="passed",
-            human_status="passed",
         )
         assert ev.auto_status == "passed"
-        assert ev.human_status == "passed"
 
         # 8. Approve candidate
         candidate.status = "approved"

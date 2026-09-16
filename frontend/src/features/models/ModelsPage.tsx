@@ -45,7 +45,6 @@ export default function ModelsPage() {
   const navigate = useNavigate();
   const [nodes, setNodes] = useState<ModelNode[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<string>("all");
   const [showImport, setShowImport] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadPct, setUploadPct] = useState<number | null>(null);
@@ -81,18 +80,12 @@ export default function ModelsPage() {
   };
 
   const roots = nodes.filter((n) => n.parentId === null);
-  const filteredRoots = filter === "all" ? roots : roots.filter((r) => r.status === filter);
+  const filteredRoots = roots;
   const hasRoot = roots.length > 0;
 
   return (
     <>
       <div className="toolbar">
-        <select value={filter} onChange={(e) => setFilter(e.target.value)} className="input-toolbar">
-          <option value="all">全部状态</option>
-          <option value="approved">已批准</option>
-          <option value="candidate">候选</option>
-          <option value="archived">已归档</option>
-        </select>
         <button className="btn primary" disabled={hasRoot} onClick={() => setShowImport(true)} style={{ marginLeft: "auto", opacity: hasRoot ? 0.5 : 1, cursor: hasRoot ? "not-allowed" : "pointer" }} title={hasRoot ? "已存在根模型，请先删除后再导入" : ""}>+ 导入根模型</button>
       </div>
 
@@ -139,8 +132,6 @@ function ModelLineage({ root, allNodes, onNavigate, onDelete, deleting }: { root
   const nodeById = useMemo(() => new Map(allNodes.map((n) => [n.id, n])), [allNodes]);
   const nodeW = (id: string) => (nodeById.get(id)?.parentId === null ? ROOT_W : NODE_W);
   const nodeH = (id: string) => (nodeById.get(id)?.parentId === null ? ROOT_H : NODE_H);
-  const statusBadge = (s: string) => s === "approved" ? "badge-green" : s === "candidate" ? "badge-orange" : "badge-gray";
-  const statusLabel = (s: string) => s === "approved" ? "已批准" : s === "candidate" ? "候选" : s;
 
   return (
     <div className="model-tree-card">
@@ -150,8 +141,7 @@ function ModelLineage({ root, allNodes, onNavigate, onDelete, deleting }: { root
           <div className="tree-card-subtitle">{root.name || root.modelFamily} · {root.modelFamily}</div>
         </div>
         <div className="tree-card-actions">
-          <span className={`badge ${statusBadge(root.status)}`}>{statusLabel(root.status)}</span>
-          {children.length === 0 && <button className="btn small danger" onClick={() => onDelete(root.id)} disabled={deleting === root.id} style={{ marginLeft: 8 }}>{deleting === root.id ? "删除中..." : "删除"}</button>}
+          {children.length === 0 && <button className="btn small danger" onClick={() => onDelete(root.id)} disabled={deleting === root.id}>{deleting === root.id ? "删除中..." : "删除"}</button>}
         </div>
       </div>
       <div className="tree-canvas">

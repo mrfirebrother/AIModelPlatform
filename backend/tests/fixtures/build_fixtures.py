@@ -660,14 +660,12 @@ class FixtureBuilder:
         dataset_snapshot_id: uuid.UUID,
         *,
         auto_status: str = "pending",
-        human_status: str = "pending",
     ) -> Evaluation:
         ev = Evaluation(
             id=_deterministic_uuid(f"eval-{self._next_int()}"),
             model_node_id=model_node_id,
             dataset_snapshot_id=dataset_snapshot_id,
             auto_status=auto_status,
-            human_status=human_status,
             evaluation_policy_json={
                 "min_mAP50": 0.5,
                 "min_precision": 0.6,

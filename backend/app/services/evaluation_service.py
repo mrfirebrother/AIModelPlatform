@@ -28,7 +28,6 @@ def create_evaluation(
         model_node_id=model_node_id,
         dataset_snapshot_id=dataset_snapshot_id,
         auto_status="pending",
-        human_status="pending",
         attempt_status="pending",
         evaluation_policy_json=policy.to_dict(),
         auto_metrics_json={},
@@ -127,30 +126,14 @@ def record_human_review(
     conclusion: str,
     comments: str | None = None,
 ) -> Evaluation:
-    if conclusion not in ("approved", "rejected"):
-        raise ValueError(f"Invalid conclusion: {conclusion}")
+    """REMOVED FEATURE - kept only as a hard failure so callers notice.
 
-    ev = session.get(Evaluation, evaluation_id, with_for_update=True)
-    if ev is None:
-        raise ValueError(f"Evaluation {evaluation_id} not found")
-    if ev.human_status in ("passed", "failed") and conclusion == ("passed" if ev.human_status == "passed" else "failed"):
-        return ev  # already in requested state
-
-    now = datetime.now(timezone.utc)
-    ev.human_status = "passed" if conclusion == "approved" else "failed"
-    ev.reviewer = reviewer
-    ev.human_conclusion = conclusion
-    ev.human_comments = comments
-    ev.reviewed_at = now
-
-    if conclusion == "approved":
-        model = session.get(ModelNode, ev.model_node_id, with_for_update=True)
-        if model is not None:
-            model.status = "approved"
-    elif conclusion == "rejected":
-        model = session.get(ModelNode, ev.model_node_id, with_for_update=True)
-        if model is not None:
-            model.status = "rejected"
-
-    session.flush()
-    return ev
+    There is no review/approval step in this platform by design: the quality gate produced a
+    pass/fail label nobody acted on, and no one owns the reviewer role. The
+    ``POST /api/evaluations/{id}/review`` endpoint is gone and migration ``0005`` dropped the
+    ``human_status`` / ``reviewer`` / ``human_conclusion`` / ``human_comments`` / ``reviewed_at``
+    columns, so there is nowhere left to record a review. Evaluations only carry metrics.
+    """
+    raise ValueError(
+        "人工复核已移除：本平台没有审核机制，评测只提供指标（Precision/Recall/mAP50/mAP50-95）"
+    )

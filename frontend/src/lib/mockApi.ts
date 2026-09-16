@@ -1,4 +1,4 @@
-import type {
+﻿import type {
   ApiClient,
   KpiData,
   ModelNode,
@@ -287,8 +287,7 @@ const evaluations: Evaluation[] = [
     modelName: "工业园区 / 火灾",
     datasetSnapshotId: "ds-fire-yard-02",
     datasetName: "工业园区火灾数据集",
-    autoStatus: "auto_passed",
-    humanStatus: "pending",
+    autoStatus: "passed",
     metrics: { precision: 0.91, recall: 0.88, mAP50: 0.89, mAP50_95: 0.72 },
     testImageCount: 48,
     createdAt: "2026-08-19T15:00:00Z",
@@ -299,8 +298,7 @@ const evaluations: Evaluation[] = [
     modelName: "A 桥 / 混凝土 · 迭代 03",
     datasetSnapshotId: "ds-bridge-a-004",
     datasetName: "A 桥混凝土数据集",
-    autoStatus: "auto_passed",
-    humanStatus: "pending",
+    autoStatus: "passed",
     metrics: { precision: 0.95, recall: 0.92, mAP50: 0.93, mAP50_95: 0.78 },
     testImageCount: 184,
     createdAt: "2026-08-20T09:00:00Z",
@@ -311,8 +309,7 @@ const evaluations: Evaluation[] = [
     modelName: "B 桥 / 混凝土 · 迭代 02",
     datasetSnapshotId: "ds-bridge-b-002",
     datasetName: "B 桥混凝土数据集",
-    autoStatus: "approved",
-    humanStatus: "approved",
+    autoStatus: "passed",
     metrics: { precision: 0.91, recall: 0.88, mAP50: 0.89, mAP50_95: 0.74 },
     testImageCount: 164,
     createdAt: "2026-08-05T11:00:00Z",
@@ -345,7 +342,6 @@ export const mockApi: ApiClient = {
       gpuTotalMb: resourceStatus.totalMemory * 1024,
       trainingQueue: trainingTasks.filter((t) => t.status === "queued").length,
       trainingRunning: trainingTasks.filter((t) => t.status === "running").length,
-      pendingEval: evaluations.filter((e) => e.humanStatus === "pending").length,
     };
   },
 

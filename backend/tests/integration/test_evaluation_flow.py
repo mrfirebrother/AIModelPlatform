@@ -99,7 +99,6 @@ class TestCreateEvaluation:
         )
         session.commit()
         assert ev.auto_status == "pending"
-        assert ev.human_status == "pending"
         assert ev.attempt_status == "pending"
         assert ev.evaluation_policy_json["min_mAP50"] == 0.5
 
@@ -228,83 +227,24 @@ class TestWriteReportPath:
             session.commit()
 
 
-class TestHumanReview:
-    def test_approve_sets_model_approved(self, session: Session) -> None:
-        snapshot = _make_snapshot(session)
-        model = _make_model(session, snapshot)
-        policy = EvaluationPolicy(
-            min_mAP50=0.5,
-            min_precision=0.4,
-            min_recall=0.4,
-            max_regression_ratio=0.1,
-            require_per_class_coverage=True,
-        )
-        ev = create_evaluation(
-            session,
-            model_node_id=model.id,
-            dataset_snapshot_id=snapshot.id,
-            policy=policy,
-        )
-        session.commit()
-        mark_evaluation_running(session, ev.id)
-        session.commit()
-        record_metrics(
-            session, ev.id, {"mAP50": 0.6, "precision": 0.7, "recall": 0.6}, passed=True
-        )
-        session.commit()
+class TestHumanReviewIsGone:
+    """人工复核（以及它依赖的通过/未通过判定）已按需求移除。
 
-        record_human_review(
-            session,
-            ev.id,
-            reviewer="admin",
-            conclusion="approved",
-            comments="Looks good",
-        )
-        session.commit()
+    平台没有审核机制：评测只产出指标，没有人负责批准/拒绝，因此这条链路不该再存在。
+    这里锁住"它确实没了"，避免以后有人又把它加回来造成误读。
+    """
 
-        session.refresh(ev)
-        session.refresh(model)
-        assert ev.human_status == "passed"
-        assert ev.reviewer == "admin"
-        assert model.status == "approved"
+    def test_service_rejects_a_review_call(self, session: Session) -> None:
+        with pytest.raises(ValueError, match="人工复核已移除"):
+            record_human_review(
+                session, uuid4(), reviewer="admin", conclusion="approved"
+            )
 
-    def test_reject_sets_model_rejected(self, session: Session) -> None:
-        snapshot = _make_snapshot(session)
-        model = _make_model(session, snapshot)
-        policy = EvaluationPolicy(
-            min_mAP50=0.5,
-            min_precision=0.4,
-            min_recall=0.4,
-            max_regression_ratio=0.1,
-            require_per_class_coverage=True,
-        )
-        ev = create_evaluation(
-            session,
-            model_node_id=model.id,
-            dataset_snapshot_id=snapshot.id,
-            policy=policy,
-        )
-        session.commit()
-        mark_evaluation_running(session, ev.id)
-        session.commit()
-        record_metrics(
-            session, ev.id, {"mAP50": 0.6, "precision": 0.7, "recall": 0.6}, passed=True
-        )
-        session.commit()
+    def test_review_endpoint_is_not_registered(self) -> None:
+        from backend.app.main import create_app
 
-        record_human_review(
-            session,
-            ev.id,
-            reviewer="admin",
-            conclusion="rejected",
-            comments="Needs work",
-        )
-        session.commit()
-
-        session.refresh(ev)
-        session.refresh(model)
-        assert ev.human_status == "failed"
-        assert model.status == "rejected"
+        paths = {getattr(route, "path", "") for route in create_app().routes}
+        assert not any(path.endswith("/review") for path in paths)
 
 
 class TestEvaluationServiceFlow:
@@ -346,14 +286,6 @@ class TestEvaluationServiceFlow:
         assert ev.auto_status == "passed"
         assert ev.auto_metrics_json["mAP50"] == 0.65
 
-        record_human_review(
-            session, ev.id, reviewer="admin", conclusion="approved", comments="OK"
-        )
-        session.commit()
-        session.refresh(ev)
-        session.refresh(model)
-        assert ev.human_status == "passed"
-        assert model.status == "approved"
 
     def test_evaluation_failed_auto_status(self, session: Session) -> None:
         snapshot = _make_snapshot(session)

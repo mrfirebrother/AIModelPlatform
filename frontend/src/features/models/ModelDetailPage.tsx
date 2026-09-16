@@ -32,17 +32,11 @@ export default function ModelDetailPage() {
           <div className="detail-row"><span>{"任务类型"}</span><b>{node.taskType}</b></div>
           <div className="detail-row"><span>{"模型族"}</span><b>{node.modelFamily}</b></div>
           <div className="detail-row"><span>{"标签体系"}</span><b>{node.labelSchemaName}</b></div>
-          <div className="detail-row">
-            <span>{"状态"}</span>
-            <b><span className={`badge ${node.status === "approved" ? "badge-green" : node.status === "candidate" ? "badge-orange" : "badge-gray"}`}>
-              {node.status === "approved" ? "已批准" : node.status === "candidate" ? "候选" : node.status}
-            </span></b>
-          </div>
           {node.metrics && (
             <>
-              <div className="detail-row"><span>Precision</span><b>{(node.metrics.precision * 100).toFixed(1)}%</b></div>
-              <div className="detail-row"><span>Recall</span><b>{(node.metrics.recall * 100).toFixed(1)}%</b></div>
-              <div className="detail-row"><span>mAP50</span><b>{(node.metrics.mAP50 * 100).toFixed(1)}%</b></div>
+              <div className="detail-row" title="精确率 = 检对的框 ÷ 模型报出的所有框；越高＝误检越少（少瞎报）"><span>Precision</span><b>{(node.metrics.precision * 100).toFixed(1)}%</b></div>
+              <div className="detail-row" title="召回率 = 检对的框 ÷ 图里真实的缺陷数；越高＝漏检越少（不漏掉）"><span>Recall</span><b>{(node.metrics.recall * 100).toFixed(1)}%</b></div>
+              <div className="detail-row" title="框重合 ≥50% 就算对，宽松版综合分；越高越好，参考 ≥50% 可用"><span>mAP50</span><b>{(node.metrics.mAP50 * 100).toFixed(1)}%</b></div>
             </>
           )}
           <div className="detail-row"><span>{"创建时间"}</span><b>{new Date(node.createdAt).toLocaleString("zh-CN")}</b></div>

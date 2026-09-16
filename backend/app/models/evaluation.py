@@ -11,15 +11,18 @@ from .base import Base, UUIDPrimaryKeyMixin, install_immutable_guard, json_colum
 
 
 class Evaluation(UUIDPrimaryKeyMixin, Base):
+    """一次模型评测。
+
+    平台没有审核机制：这里**没有**人工复核字段（原 human_status / reviewer / human_conclusion /
+    human_comments / reviewed_at 已由迁移 ``0005`` 删除）。``auto_status`` 是评测流水线状态
+    （pending → running → passed/failed），供 worker、调度器与 model_diff 使用，不是"通过/未通过"判定。
+    """
+
     __tablename__ = "evaluations"
     __table_args__ = (
         CheckConstraint(
             "auto_status IN ('pending', 'running', 'passed', 'failed')",
             name="evaluation_auto_status",
-        ),
-        CheckConstraint(
-            "human_status IN ('pending', 'passed', 'failed')",
-            name="evaluation_human_status",
         ),
         CheckConstraint(
             "attempt_status IN ('pending', 'running', 'passed', 'failed', 'retrying', 'cancelled')",
@@ -38,14 +41,10 @@ class Evaluation(UUIDPrimaryKeyMixin, Base):
         ForeignKey("dataset_snapshots.id", ondelete="RESTRICT"), nullable=False
     )
     auto_status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
-    human_status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
     evaluation_policy_json: Mapped[dict[str, Any]] = json_column()
     auto_metrics_json: Mapped[dict[str, Any]] = json_column()
     report_path: Mapped[str | None] = mapped_column(String(1024))
     report_hash: Mapped[str | None] = mapped_column(String(255))
-    reviewer: Mapped[str | None] = mapped_column(String(255))
-    human_conclusion: Mapped[str | None] = mapped_column(String(64))
-    human_comments: Mapped[str | None] = mapped_column(Text)
     attempt_no: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     attempt_status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
     lease_token: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True))
@@ -57,7 +56,6 @@ class Evaluation(UUIDPrimaryKeyMixin, Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
-    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     model_node: Mapped["ModelNode"] = relationship("ModelNode")
     dataset_snapshot: Mapped["DatasetSnapshot"] = relationship("DatasetSnapshot")

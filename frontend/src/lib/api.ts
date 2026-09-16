@@ -1,10 +1,9 @@
-/* ===== Type definitions ===== */
+﻿/* ===== Type definitions ===== */
 
 export type ModelNodeStatus = "candidate" | "approved" | "rejected" | "archived";
 export type BindingStatus = "active" | "inactive" | "unbound";
 export type ReleaseStatus = "pending" | "preparing" | "active" | "superseded" | "failed";
 export type TrainingStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
-export type EvalStatus = "pending" | "auto_passed" | "approved" | "rejected";
 
 export interface ModelNode {
   id: string;
@@ -89,6 +88,7 @@ export interface TrainingTask {
   loss?: number;
   progress?: number;
   trainingConfigJson?: Record<string, unknown>;
+  evaluationPolicyJson?: Record<string, unknown>;
   createdAt: string;
   startedAt?: string;
   completedAt?: string;
@@ -145,8 +145,8 @@ export interface Evaluation {
   modelName: string;
   datasetSnapshotId: string;
   datasetName: string;
-  autoStatus: EvalStatus;
-  humanStatus: EvalStatus;
+  // 评测流水线状态；没有 humanStatus —— 平台不存在人工复核机制
+  autoStatus: "pending" | "running" | "passed" | "failed";
   metrics?: {
     precision: number;
     recall: number;
@@ -230,7 +230,6 @@ export interface KpiData {
   gpuTotalMb: number;
   trainingQueue: number;
   trainingRunning: number;
-  pendingEval: number;
 }
 
 export interface UploadResponse {

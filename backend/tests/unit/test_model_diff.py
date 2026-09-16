@@ -115,7 +115,6 @@ def _make_evaluation(
         model_node_id=model_node_id,
         dataset_snapshot_id=dataset_snapshot_id,
         auto_status="passed",
-        human_status="pending",
         evaluation_policy_json={},
         auto_metrics_json=metrics or {},
     )

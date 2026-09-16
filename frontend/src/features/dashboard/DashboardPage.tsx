@@ -40,10 +40,10 @@ export default function DashboardPage() {
 
       <section className="kpi-grid">
         {[
-          { k: "候选模型", v: models.filter((n) => n.status === "candidate").length, sub: `共 ${models.length} 个`, icon: "◆", bg: "rgba(54,161,189,0.08)", bd: "#36a1bd" },
+          { k: "模型", v: models.length, sub: "谱系节点", icon: "◆", bg: "rgba(54,161,189,0.08)", bd: "#36a1bd" },
           { k: "运行中", v: running.length, sub: queued.length ? `${queued.length} 等待` : completed.length ? `${completed.length} 已完成` : "空闲", icon: "▶", bg: running.length ? "rgba(45,131,197,0.08)" : "rgba(0,0,0,0.02)", bd: running.length ? "#2d83c5" : "#d8e5ef" },
           { k: "已完成", v: completed.length, sub: completed.length ? "次训练" : "暂无完成", icon: "✓", bg: completed.length ? "rgba(26,138,117,0.08)" : "rgba(0,0,0,0.02)", bd: completed.length ? "#1a8a75" : "#d8e5ef" },
-          { k: "评估", v: evals.length, sub: evals.filter((e: any) => e.autoStatus === "passed").length + " 通过", icon: "◎", bg: evals.length ? "rgba(139,92,246,0.06)" : "rgba(0,0,0,0.02)", bd: evals.length ? "#8b5cf6" : "#d8e5ef" },
+          { k: "评估", v: evals.length, sub: evals.length ? "次评测" : "暂无评测", icon: "◎", bg: evals.length ? "rgba(139,92,246,0.06)" : "rgba(0,0,0,0.02)", bd: evals.length ? "#8b5cf6" : "#d8e5ef" },
         ].map(({ k, v, sub, icon, bg, bd }) => (
           <div key={k} className="grid-card kpi-card">
             <div className="kpi-top">
@@ -107,8 +107,8 @@ export default function DashboardPage() {
                       <div style={{ fontWeight: 600, fontSize: 12 }}>{latest.modelName}</div>
                       <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{latest.datasetName}</div>
                     </div>
-                    <span className={`badge badge-xs ${latest.metrics ? "badge-green" : (latest as any).autoStatus === "failed" ? "badge-red" : "badge-orange"}`} style={{ marginLeft: "auto" }}>
-                      {latest.metrics ? `${(latest.metrics.mAP50 * 100).toFixed(1)}%` : (latest as any).autoStatus}
+                    <span className={`badge badge-xs ${latest.metrics ? "badge-green" : "badge-gray"}`} style={{ marginLeft: "auto" }}>
+                      {latest.metrics ? `${(latest.metrics.mAP50 * 100).toFixed(1)}%` : "评测中"}
                     </span>
                   </div>
                   {latest.metrics ? (

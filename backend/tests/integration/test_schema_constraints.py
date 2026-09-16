@@ -512,7 +512,6 @@ def test_lease_and_lifecycle_timestamps_are_timezone_aware() -> None:
         "lease_expires_at",
         "started_at",
         "finished_at",
-        "reviewed_at",
         "stopped_at",
     }
     for table in Base.metadata.tables.values():

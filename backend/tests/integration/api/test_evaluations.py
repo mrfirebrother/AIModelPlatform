@@ -73,7 +73,6 @@ async def test_get_evaluation(app, session, headers, model_and_snapshot):
         model_node_id=model.id,
         dataset_snapshot_id=snapshot.id,
         auto_status="pending",
-        human_status="pending",
         evaluation_policy_json={},
         auto_metrics_json={},
     )
@@ -97,7 +96,6 @@ async def test_list_evaluations(app, session, headers, model_and_snapshot):
         model_node_id=model.id,
         dataset_snapshot_id=snapshot.id,
         auto_status="pending",
-        human_status="pending",
         evaluation_policy_json={},
         auto_metrics_json={},
     )

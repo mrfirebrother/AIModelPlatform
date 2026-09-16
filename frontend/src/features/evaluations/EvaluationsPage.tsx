@@ -3,10 +3,8 @@ import { createApi } from "../../lib/createApi";
 import LoadingSpinner from "../../lib/LoadingSpinner";
 import type { Evaluation } from "../../lib/api";
 
-const STATUS_LABEL: Record<string, string> = { pending: "待处理", auto_passed: "自动通过", passed: "自动通过", approved: "已通过", rejected: "已拒绝", failed: "已拒绝" };
-const STATUS_BADGE: Record<string, string> = { pending: "badge-orange", auto_passed: "badge-blue", passed: "badge-blue", approved: "badge-green", rejected: "badge-red", failed: "badge-red" };
-const STATUS_COLOR: Record<string, string> = { pending: "#d77d59", auto_passed: "#36a1bd", passed: "#36a1bd", approved: "#1a8a75", rejected: "#c44", failed: "#c44" };
-
+// 评测只提供指标，没有「通过/未通过」判定，也没有人工复核 —— 平台不存在审核机制，
+// 所以这里不再有任何状态徽标/筛选（阈值判定与 /review 接口已一并移除）。
 function formatTime(iso?: string): string { if (!iso) return "—"; const d = new Date(iso); return `${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`; }
 
 export default function EvaluationsPage() {
@@ -14,7 +12,6 @@ export default function EvaluationsPage() {
   const [evals, setEvals] = useState<Evaluation[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState<string>("all");
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
@@ -30,11 +27,10 @@ export default function EvaluationsPage() {
 
   const filtered = useMemo(() => {
     let list = [...evals];
-    if (statusFilter !== "all") list = list.filter((e) => e.autoStatus === statusFilter || (e as any).humanStatus === statusFilter);
     if (search) list = list.filter((e) => e.modelName.toLowerCase().includes(search) || e.modelNodeId.toLowerCase().includes(search) || e.datasetName.toLowerCase().includes(search));
     list.sort((a, b) => { const ta = new Date(a.createdAt).getTime(); const tb = new Date(b.createdAt).getTime(); return sortDir === "asc" ? ta - tb : tb - ta; });
     return list;
-  }, [evals, statusFilter, search, sortDir]);
+  }, [evals, search, sortDir]);
 
   const handleInfer = async (file: File) => {
     if (!selectedId) return;
@@ -45,8 +41,6 @@ export default function EvaluationsPage() {
   };
 
   const current = evals.find((e) => e.id === selectedId) || null;
-  const pendingCount = evals.filter((e) => e.autoStatus === "pending").length;
-  const statusBadge = (s: string) => s === "pending" ? "badge-orange" : s === "auto_passed" || s === "passed" ? "badge-blue" : s === "approved" ? "badge-green" : "badge-red";
 
   function InferResultCanvas({ result, imageUrl }: { result: any; imageUrl: string }) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -80,16 +74,10 @@ export default function EvaluationsPage() {
   return (
     <>
       <div className="toolbar">
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="input-toolbar">
-          <option value="all">全部状态</option>
-          <option value="pending">待评估</option>
-          <option value="passed">自动通过</option>
-          <option value="failed">评估失败</option>
-        </select>
         <input value={searchInput} onChange={(e) => setSearchInput(e.target.value)} placeholder="搜索 模型/数据集" className="input-search" />
         {search && <button className="btn small" onClick={() => { setSearchInput(""); setSearch(""); }}>清空</button>}
         <div className="toolbar-spacer" />
-        <span className="toolbar-hint">{filtered.length} 条 {"·"} {pendingCount} 个待人工验收</span>
+        <span className="toolbar-hint">{filtered.length} 条评测记录</span>
       </div>
 
       <div className="card" style={{ overflow: "hidden" }}>
@@ -97,28 +85,29 @@ export default function EvaluationsPage() {
           <LoadingSpinner text="加载评估列表..." />
         ) : (<>
         <div className="grid-table-header" style={{ gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr 100px" }}>
-          <span>模型</span><span>状态</span><span>mAP50</span><span>测试集</span>
+          <span>模型</span><span title="综合指标（IoU 0.5），越高越好；点开某一行可看到全部指标与说明">mAP50</span><span>mAP50-95</span><span>测试集</span>
           <button className="sort-btn" onClick={() => setSortDir((d) => d === "asc" ? "desc" : "asc")}>时间 {sortDir === "asc" ? "↑" : "↓"}</button>
           <span className="cell-actions">操作</span>
         </div>
         {filtered.map((e) => {
           const sel = selectedId === e.id;
           const mAP = e.metrics?.mAP50 ?? (e as any).auto_metrics_json?.mAP50 ?? null;
+          const mAP95 = e.metrics?.mAP50_95 ?? (e as any).auto_metrics_json?.mAP50_95 ?? null;
           return (
             <div key={e.id} onClick={() => setSelectedId(sel ? null : e.id)} className={`grid-table-row ${sel ? "grid-table-row-selected" : ""}`} style={{ gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr 100px" }}>
               <div style={{ minWidth: 0 }}>
                 <div className="cell-primary">{e.modelName}</div>
                 <div className="cell-mono">{e.modelNodeId.slice(0, 8)}</div>
               </div>
-              <div><span className={`badge badge-xs ${statusBadge(e.autoStatus)}`}>{STATUS_LABEL[e.autoStatus] || e.autoStatus}</span></div>
               <div className="cell-text" style={{ fontWeight: mAP !== null ? 600 : 400, color: mAP !== null ? "var(--text)" : "var(--text-muted)", fontFamily: "Courier New, monospace" }}>{mAP !== null ? (mAP * 100).toFixed(1) + "%" : "—"}</div>
+              <div className="cell-text" style={{ fontFamily: "Courier New, monospace" }}>{mAP95 !== null ? (mAP95 * 100).toFixed(1) + "%" : "—"}</div>
               <div className="cell-text">{e.testImageCount} 张</div>
               <div className="cell-text">{formatTime(e.createdAt)}</div>
               <div className="cell-actions"><button className="btn small btn-inline-view" onClick={(ev) => { ev.stopPropagation(); setSelectedId(e.id); }}>查看</button></div>
             </div>
           );
         })}
-        {filtered.length === 0 && <div className="empty-msg">{evals.length === 0 ? "暂无评估" : <>{"无匹配"} <button className="btn small" onClick={() => { setStatusFilter("all"); setSearchInput(""); setSearch(""); }} style={{ marginLeft: 8 }}>清空筛选</button></>}</div>}
+        {filtered.length === 0 && <div className="empty-msg">{evals.length === 0 ? "暂无评估" : <>{"无匹配"} <button className="btn small" onClick={() => { setSearchInput(""); setSearch(""); }} style={{ marginLeft: 8 }}>清空筛选</button></>}</div>}
         </>)}
       </div>
 
@@ -142,8 +131,7 @@ export default function EvaluationsPage() {
               </div>
               <div className="eval-drawer-stats">
                 <div className="eval-stat-card">
-                  <div className="eval-stat-dot" style={{ background: STATUS_COLOR[current.autoStatus] || "#999" }} />
-                  <div><div className="eval-stat-label">评估状态</div><div className="eval-stat-value">{STATUS_LABEL[current.autoStatus]}</div></div>
+                  <div><div className="eval-stat-label">mAP50</div><div className="eval-stat-value">{current.metrics ? `${(current.metrics.mAP50 * 100).toFixed(1)}%` : "—"}</div></div>
                 </div>
                 <div className="eval-stat-card">
                   <div><div className="eval-stat-label">测试集</div><div className="eval-stat-value">{current.testImageCount} 张</div></div>
@@ -166,13 +154,27 @@ export default function EvaluationsPage() {
                 <div className="eval-section">
                   <div className="eval-section-title"><div className="accent-bar" />评估指标</div>
                   <div className="metric-grid-4">
-                    {([["Precision", current.metrics.precision * 100, "#1766ad"], ["Recall", current.metrics.recall * 100, "#1a8a75"], ["mAP50", current.metrics.mAP50 * 100, "#36a1bd"], ["mAP50-95", current.metrics.mAP50_95 * 100, "#d77d59"]] as [string, number, string][]).map(([label, val, color]) => (
+                    {([
+                      ["Precision", "误检少（少瞎报）", current.metrics.precision * 100, "#1766ad"],
+                      ["Recall", "漏检少（不漏掉）", current.metrics.recall * 100, "#1a8a75"],
+                      ["mAP50", "宽松综合分", current.metrics.mAP50 * 100, "#36a1bd"],
+                      ["mAP50-95", "严格综合分", current.metrics.mAP50_95 * 100, "#d77d59"],
+                    ] as [string, string, number, string][]).map(([label, desc, val, color]) => (
                       <div key={label} className="metric-card-4" style={{ borderTop: `3px solid ${color}` }}>
                         <div className="mc4-label">{label}</div>
                         <div className="mc4-value">{val.toFixed(1)}%</div>
                         <div className="mc4-bar"><div className="mc4-bar-fill" style={{ width: `${Math.min(val, 100)}%`, background: color }} /></div>
+                        <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 6 }}>{desc}</div>
                       </div>
                     ))}
+                  </div>
+                  <div style={{ marginTop: 8, fontSize: 12, lineHeight: 1.9, color: "var(--text-muted)" }}>
+                    <div><b style={{ color: "var(--text)" }}>四项都是越高越好</b>，漏检代价高的场景（质检/安全）优先保 Recall。</div>
+                    <div>· <b>Precision 精确率</b> = 检对的框 ÷ 模型报出的所有框 → 越高＝误检越少（少瞎报）</div>
+                    <div>· <b>Recall 召回率</b> = 检对的框 ÷ 图里真实的缺陷数 → 越高＝漏检越少（不漏掉）</div>
+                    <div>· <b>mAP50</b>：框重合 ≥ 50% 就算对，宽松版综合分</div>
+                    <div>· <b>mAP50-95</b>：重合 50%~95% 十个档位分别算再平均，严格版综合分，比较模型看它（一定 ≤ mAP50）</div>
+                    <div>· 置信度阈值调高 → Precision 升、Recall 降，调低则相反。参考：mAP50 ≥ 50% 可用，&lt; 20% 基本没学到</div>
                   </div>
                 </div>
               ) : null}
@@ -180,7 +182,9 @@ export default function EvaluationsPage() {
               {current.metrics?.per_class && Object.keys(current.metrics.per_class).length > 0 && (
                 <div className="eval-section">
                   <div className="eval-section-title"><div className="accent-bar" />分类指标</div>
-                  <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8 }}>{"各类别的 Precision / Recall，识别问题类别"}</div>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8 }}>
+                    {"各类别的 Precision / Recall，同样是越高越好；用来定位「哪一类没学好」。测试集中没有标注的类别不会出现在这里。"}
+                  </div>
                   <div>
                     <div className="class-metrics-header"><span>{"类别"}</span><span>Precision</span><span>Recall</span></div>
                     {Object.entries(current.metrics.per_class as Record<string, { recall: number; precision: number }>).map(([clsId, cls]) => {
