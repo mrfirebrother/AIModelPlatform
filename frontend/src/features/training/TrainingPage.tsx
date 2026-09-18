@@ -1,6 +1,7 @@
 ﻿import { Fragment, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { createApi } from "../../lib/createApi";
+import { LiveEpoch } from "../../lib/LiveEpoch";
 import { useToast } from "../../lib/toast";
 import LoadingSpinner from "../../lib/LoadingSpinner";
 import type { TrainingTask, TrainingLogs, TrainingMetrics, TrainingCheckpoint } from "../../lib/api";
@@ -143,7 +144,11 @@ export default function TrainingPage() {
                 <div className="cell-primary">{(t as any).trainingConfigJson?.modelName || (t as any).trainingConfigJson?.model_name || (t as any).parentModelName || t.id.slice(0, 8)}</div>
                 <div className="cell-mono">{taskDatasetName(t)}</div>
               </div>
-              <div className="cell-text" title={`${(t as any).modelFamily || "YOLOv8"} · ${(t as any).trainingConfigJson?.device || "cpu"}`}>{taskEpochs(t)} 轮 · {(t as any).trainingConfigJson?.device || "cpu"}</div>
+              {t.status === "running" ? (
+                <div className="cell-text" title={(t as any).trainingConfigJson?.device || "cpu"}><LiveEpoch taskId={t.id} totalEpochs={taskEpochs(t)} /> · {(t as any).trainingConfigJson?.device || "cpu"}</div>
+              ) : (
+                <div className="cell-text" title={`${(t as any).modelFamily || "YOLOv8"} · ${(t as any).trainingConfigJson?.device || "cpu"}`}>{taskEpochs(t)} 轮 · {(t as any).trainingConfigJson?.device || "cpu"}</div>
+              )}
               <div><span className={`badge badge-xs ${STATUS_BADGE[t.status] || "badge-gray"}`}>{STATUS_LABEL[t.status] || t.status}</span></div>
               <div className="cell-text">{formatTime((t as any).createdAt)}</div>
               <div className="cell-text" style={{ color: t.status === "running" ? "var(--accent-orange)" : "var(--text-muted)" }}>{dur}</div>

@@ -1,5 +1,6 @@
 ﻿from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 from uuid import UUID
 
@@ -8,7 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from backend.app.api.dependencies import get_db, verify_api_key
+from backend.app.api.dependencies import get_db, get_effective_settings, verify_api_key
 from backend.app.models import Checkpoint, TrainingAttempt, TrainingTask
 
 router = APIRouter(prefix="/api/training", tags=["training-logs"])
@@ -96,6 +97,28 @@ def get_training_logs(
             current_epoch = a.current_epoch
     if current_epoch == 0 and task.status == "completed":
         current_epoch = total_epochs
+    if task.status == "running" and current_epoch < total_epochs:
+        # The DB current_epoch is only written at completion, so derive live
+        # progress while the run is in flight: ultralytics appends one row per
+        # completed epoch to the attempt's results.csv.
+        try:
+            settings = get_effective_settings()
+            for a in sorted(attempts, key=lambda x: x.attempt_no, reverse=True):
+                csv_path = (
+                    Path(settings.checkpoint_dir)
+                    / str(task_id)
+                    / f"attempt_{a.attempt_no}"
+                    / "checkpoints"
+                    / "train"
+                    / "results.csv"
+                )
+                if csv_path.exists():
+                    with open(csv_path, encoding="utf-8", errors="ignore") as fh:
+                        live_epochs = sum(1 for _ in fh) - 1  # minus header row
+                    current_epoch = max(current_epoch, live_epochs)
+                    break
+        except Exception:  # noqa: BLE001 - progress is best-effort
+            pass
 
     attempt_entries = [
         AttemptLogEntry(

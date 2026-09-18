@@ -1,12 +1,39 @@
 ﻿import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { createApi } from "../../lib/createApi";
+import { useLiveEpoch } from "../../lib/LiveEpoch";
 import type { ModelNode, TrainingTask, Evaluation } from "../../lib/api";
 
 function fmtTime(iso?: string): string {
   if (!iso) return "—";
   const d = new Date(iso);
   return `${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+/** 训练任务行：运行中时按实时轮数驱动进度，其余状态沿用静态展示。 */
+function TrainingRow({ t, onOpen }: { t: TrainingTask; onOpen: () => void }) {
+  const live = useLiveEpoch(t.id);
+  const total = (t as any).epochs ?? 0;
+  const isRunning = t.status === "running";
+  const pct = isRunning
+    ? total > 0 ? Math.min(100, Math.round((live / total) * 100)) : 0
+    : t.status === "completed" ? 100 : 0;
+  const pc = isRunning ? "var(--primary)" : t.status === "completed" ? "var(--accent-green)" : t.status === "failed" ? "#b33" : "#d8e5ef";
+  const epochText = isRunning ? (live > 0 ? `第 ${live}/${total} 轮` : `${total} 轮`) : `${total} 轮`;
+  return (
+    <div className="training-item" onClick={onOpen}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+        <span className="training-name">{(t as any).trainingConfigJson?.modelName || (t as any).parentModelName || t.id.slice(0, 8)}</span>
+        <span className={`badge badge-xs ${t.status === "running" ? "badge-cyan" : t.status === "completed" ? "badge-green" : t.status === "failed" ? "badge-red" : "badge-orange"}`} style={{ flexShrink: 0, marginLeft: 8 }}>
+          {t.status === "running" ? "运行中" : t.status === "completed" ? "已完成" : t.status === "failed" ? "失败" : "排队中"}
+        </span>
+      </div>
+      <div className="training-meta">{(t as any).datasetName} · {epochText}</div>
+      <div className="progress-bar">
+        <div className="progress-fill" style={{ width: `${pct}%`, background: pc }} />
+      </div>
+    </div>
+  );
 }
 
 export default function DashboardPage() {
@@ -69,24 +96,9 @@ export default function DashboardPage() {
                 <div className="empty-text">暂无训练，点击新建开始</div>
                 <button className="btn primary small" onClick={() => navigate("/training/create")} style={{ marginTop: 10 }}>新建训练</button>
               </div>
-            ) : tasks.slice(0, 5).map((t) => {
-              const p = t.status === "running" ? 55 : t.status === "completed" ? 100 : 0;
-              const pc = t.status === "running" ? "var(--primary)" : t.status === "completed" ? "var(--accent-green)" : t.status === "failed" ? "#b33" : "#d8e5ef";
-              return (
-                <div key={t.id} className="training-item" onClick={() => navigate("/training")}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                    <span className="training-name">{(t as any).trainingConfigJson?.modelName || (t as any).parentModelName || t.id.slice(0, 8)}</span>
-                    <span className={`badge badge-xs ${t.status === "running" ? "badge-cyan" : t.status === "completed" ? "badge-green" : t.status === "failed" ? "badge-red" : "badge-orange"}`} style={{ flexShrink: 0, marginLeft: 8 }}>
-                      {t.status === "running" ? "运行中" : t.status === "completed" ? "已完成" : t.status === "failed" ? "失败" : "排队中"}
-                    </span>
-                  </div>
-                  <div className="training-meta">{(t as any).datasetName} · {t.epochs} 轮</div>
-                  <div className="progress-bar">
-                    <div className="progress-fill" style={{ width: `${p}%`, background: pc }} />
-                  </div>
-                </div>
-              );
-            })}
+            ) : tasks.slice(0, 5).map((t) => (
+              <TrainingRow key={t.id} t={t} onOpen={() => navigate("/training")} />
+            ))}
           </div>
         </div>
 
