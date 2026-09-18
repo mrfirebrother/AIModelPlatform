@@ -25,6 +25,18 @@ logger = logging.getLogger("platform.inference")
 ALLOWED_IMAGE_FORMATS = {"png", "jpg", "jpeg", "bmp", "webp"}
 DEFAULT_MAX_IMAGE_BYTES = 10 * 1024 * 1024
 
+# One engine per process so loaded models stay resident across requests.
+_engine = None
+
+
+def _get_engine():
+    global _engine
+    if _engine is None:
+        from backend.app.inference.yolo_engine import YoloEngine
+
+        _engine = YoloEngine()
+    return _engine
+
 
 class InferenceService:
     def __init__(self, session: Session) -> None:
@@ -96,20 +108,49 @@ class InferenceService:
 
         image_bytes = self.validate_image(image_base64, image_format)
         instance, release, model = self._resolve_runtime(binding)
+        if model is None:
+            raise ValueError("Model node not found for serving instance")
+
+        # The release's inference config carries the serving thresholds
+        # (confidence_threshold etc.); fall back to the engine default.
+        confidence = 0.25
+        if release is not None and release.inference_config_json:
+            cfg = release.inference_config_json or {}
+            confidence = float(cfg.get("confidence_threshold", cfg.get("conf", 0.25)))
+
+        engine = _get_engine()
+        if model.artifact_path not in engine.list_models():
+            engine.load_model(model.artifact_path)
+        detections = engine.predict(
+            model.artifact_path,
+            image_bytes,
+            image_format,
+            confidence_threshold=confidence,
+        )
 
         latency_ms = (time.time() - start_time) * 1000
 
         logger.info(
-            "Inference completed: binding=%s model=%s latency=%.2fms",
+            "Inference completed: binding=%s model=%s detections=%d latency=%.2fms",
             binding.id,
             instance.model_node_id,
+            len(detections),
             latency_ms,
         )
 
         return InferenceResponse(
             results=[
                 InferenceResult(
-                    detections=[],
+                    detections=[
+                        InferenceDetection(
+                            class_name=d.class_name,
+                            confidence=d.confidence,
+                            bbox=d.bbox,
+                            class_id=d.class_id,
+                            mask=d.mask,
+                        )
+                        for d in detections
+                    ],
                     modelBindingId=binding.id,
                     modelNodeId=instance.model_node_id,
                     releaseId=instance.release_id,

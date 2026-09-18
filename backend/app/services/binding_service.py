@@ -10,6 +10,7 @@ from backend.app.repositories.binding_repository import (
     get_active_release,
     update_current_release,
 )
+from backend.app.runtime.runtime_instance import RuntimeInstanceManager
 
 
 def activate_release(session: Session, release_id: UUID) -> BindingRelease:
@@ -28,6 +29,35 @@ def activate_release(session: Session, release_id: UUID) -> BindingRelease:
         previous_active.status = "superseded"
     release.status = "active"
     update_current_release(session, release.binding_id, release_id)
+    session.flush()
+
+    # Single-process platform: stand up the serving instance synchronously rather
+    # than through a separate runtime manager. Drain the previous serving
+    # instance, create a fresh one for this release, and hand it to the binding
+    # so `/api/v1/infer` has something to serve.
+    manager = RuntimeInstanceManager()
+    binding = session.get(ModelBinding, release.binding_id)
+    if binding is None:
+        raise ValueError(f"Binding {release.binding_id} not found")
+    previous_instance = manager.get_serving_instance(session, release.binding_id)
+    generation = 1
+    if previous_instance is not None:
+        generation = previous_instance.generation + 1
+        manager.transition_status(session, previous_instance.id, "draining")
+        manager.transition_status(session, previous_instance.id, "stopped")
+    instance = manager.create_instance(
+        session,
+        binding_id=release.binding_id,
+        release_id=release.id,
+        model_node_id=release.model_node_id,
+        config_hash=release.inference_config_hash or "",
+        generation=generation,
+        fencing_token=generation,
+        gpu_device="0",
+    )
+    for target in ("preparing", "ready", "serving"):
+        manager.transition_status(session, instance.id, target)
+    binding.current_runtime_instance_id = instance.id
     session.flush()
     return release
 

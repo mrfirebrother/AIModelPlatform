@@ -52,6 +52,9 @@ class InferenceDetection(BaseModel):
     confidence: float
     bbox: list[float]
     class_id: int
+    #: Segmentation models: instance mask polygon ([[x, y], ...] in original-image
+    #: coordinates). Absent for detection models.
+    mask: list[list[float]] | None = None
 
 
 class InferenceResult(BaseModel):

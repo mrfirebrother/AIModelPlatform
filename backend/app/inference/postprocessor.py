@@ -11,14 +11,20 @@ class Detection:
     confidence: float
     bbox: list[float] = field(default_factory=list)
     class_id: int = 0
+    #: Segmentation models: instance mask as a polygon (list of [x, y] points in
+    #: original-image coordinates). None for detection models.
+    mask: list[list[float]] | None = None
 
     def to_dict(self) -> dict:
-        return {
+        result = {
             "class_name": self.class_name,
             "confidence": self.confidence,
             "bbox": self.bbox,
             "class_id": self.class_id,
         }
+        if self.mask is not None:
+            result["mask"] = self.mask
+        return result
 
 
 def _compute_iou(box_a: list[float], box_b: list[float]) -> float:

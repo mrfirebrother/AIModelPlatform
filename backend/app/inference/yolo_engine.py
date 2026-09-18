@@ -113,6 +113,12 @@ class YoloEngine:
         detections: list[Detection] = []
         if results and len(results) > 0:
             result = results[0]
+            # Segmentation models carry instance masks aligned with the boxes;
+            # expose each mask as a polygon so consumers can draw/measure the
+            # actual defect region, not just its box.
+            mask_polys = None
+            if hasattr(result, "masks") and result.masks is not None and hasattr(result.masks, "xy"):
+                mask_polys = [poly.tolist() for poly in result.masks.xy]
             if hasattr(result, "boxes") and result.boxes is not None:
                 xyxy = result.boxes.xyxy
                 confs = result.boxes.conf
@@ -121,12 +127,18 @@ class YoloEngine:
                     box = xyxy[i].tolist() if hasattr(xyxy[i], "tolist") else list(xyxy[i])
                     conf = float(confs[i]) if hasattr(confs, "__getitem__") else 0.0
                     cls_id = int(clss[i]) if hasattr(clss, "__getitem__") else 0
+                    mask = None
+                    if mask_polys is not None and i < len(mask_polys):
+                        mask = [
+                            [round(px, 2), round(py, 2)] for px, py in mask_polys[i]
+                        ]
                     detections.append(
                         Detection(
                             class_name="",
                             confidence=conf,
                             bbox=box,
                             class_id=cls_id,
+                            mask=mask,
                         )
                     )
 
