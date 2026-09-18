@@ -153,6 +153,8 @@ export interface Evaluation {
     mAP50: number;
     mAP50_95: number;
     per_class?: Record<string, { recall: number; precision: number }>;
+    // 分割模型的掩码口径指标（mAP50(M) 等），检测模型没有该字段
+    mask?: { precision: number; recall: number; mAP50: number; mAP50_95: number };
   };
   testImageCount: number;
   createdAt: string;

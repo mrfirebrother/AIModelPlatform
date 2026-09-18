@@ -80,7 +80,9 @@ def _resolve_training_device(training_config: dict[str, Any]) -> str:
     return YoloDataset.resolve_device(str(requested))
 
 
-def _build_trainer_config(training_config: dict[str, Any], device: str) -> dict[str, Any]:
+def _build_trainer_config(
+    training_config: dict[str, Any], device: str, task_type: str = "object_detection"
+) -> dict[str, Any]:
     """Resolve the ultralytics arguments for one training run.
 
     The create route already stores a complete, normalized parameter snapshot in
@@ -92,7 +94,9 @@ def _build_trainer_config(training_config: dict[str, Any], device: str) -> dict[
     settings = get_settings()
     try:
         resolved, warnings = resolve_config(
-            training_config, defaults=defaults_from_settings(settings)
+            training_config,
+            defaults=defaults_from_settings(settings),
+            task_type=task_type,
         )
     except ValueError as exc:  # e.g. a task created before a validation rule existed
         logger.warning("Training config rejected by validation (%s); using it as-is", exc)
@@ -472,7 +476,7 @@ def execute_training(
         gpu_lease_id_value = lease.id if lease is not None else None
         gpu_lease_token_value = lease.lease_token if lease is not None else None
 
-        trainer_config = _build_trainer_config(training_config, device)
+        trainer_config = _build_trainer_config(training_config, device, task.task_type)
         # Log, do not persist: `training_config_json` is immutable after insert
         # (install_immutable_guard(TrainingTask, …)), so the parameter snapshot is written by
         # the create route. Attempting it here raises ImmutableFieldError - verified.

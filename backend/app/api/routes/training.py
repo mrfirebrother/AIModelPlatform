@@ -145,6 +145,7 @@ def create_training_task(
             payload.get_config(),
             defaults=defaults_from_settings(settings),
             vram_limit_mb=vram_limit_mb,
+            task_type=payload.task_type,
         )
         for warning in warnings:
             logger.warning("Training config: %s", warning)

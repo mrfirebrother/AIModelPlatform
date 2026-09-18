@@ -39,6 +39,10 @@ class EvalResult:
     num_predictions: int
     num_ground_truths: int
     error: str | None = None
+    #: Present only for segmentation models: ultralytics' mask-branch metrics
+    #: (mAP50(M), mAP50-95(M), precision(M), recall(M)). Box metrics above are still
+    #: filled - a seg model computes both.
+    mask_metrics: dict[str, float] | None = None
 
 
 class YoloEvaluator:
@@ -194,6 +198,18 @@ class YoloEvaluator:
         per_class_counts = getattr(box, "nt_per_class", None)
         if per_class_counts is not None:
             ground_truths = int(sum(int(count) for count in per_class_counts))
+        # Segmentation models additionally report mask-branch metrics (mAP50(M) etc.);
+        # keep them alongside the box numbers instead of silently dropping them.
+        # ultralytics 8.4 exposes them as `metrics.seg` (older versions: `metrics.mask`).
+        mask_metrics = None
+        mask = getattr(metrics, "seg", None) or getattr(metrics, "mask", None)
+        if mask is not None:
+            mask_metrics = {
+                "mAP50": float(mask.map50),
+                "mAP50_95": float(mask.map),
+                "precision": float(mask.mp),
+                "recall": float(mask.mr),
+            }
         return EvalResult(
             success=True,
             mAP50=float(box.map50),
@@ -205,6 +221,7 @@ class YoloEvaluator:
             num_predictions=0,
             num_ground_truths=ground_truths,
             error=None,
+            mask_metrics=mask_metrics,
         )
 
     def _compute_overall_metrics(

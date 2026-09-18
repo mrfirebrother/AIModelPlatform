@@ -133,11 +133,19 @@ LOCKED_REASONS: dict[str, str] = {
 #: Measured on this box: imgsz 416 + batch 8 -> 1.28 GB peak (ultralytics' own GPU_mem column).
 #: Peak memory tracks pixels-per-image x batch, so this single point extrapolates the rest.
 _VRAM_MB_PER_IMAGE_AT_416 = 160.0
+#: Segmentation costs more than detection at the same (imgsz, batch): measured seg
+#: batch 8 / imgsz 416 -> 1.48 GB, i.e. 1.16x the detection figure above.
+_VRAM_SEG_FACTOR = 1.16
 
 
-def estimate_train_vram_mb(imgsz: float, batch: float) -> float:
-    """Rough peak training VRAM in MiB for one (imgsz, batch) pair."""
-    return _VRAM_MB_PER_IMAGE_AT_416 * (float(imgsz) / 416.0) ** 2 * float(batch)
+def estimate_train_vram_mb(
+    imgsz: float, batch: float, task_type: str = "object_detection"
+) -> float:
+    """Rough peak training VRAM in MiB for one (imgsz, batch, task_type) triple."""
+    base = _VRAM_MB_PER_IMAGE_AT_416 * (float(imgsz) / 416.0) ** 2 * float(batch)
+    if task_type == "instance_segmentation":
+        base *= _VRAM_SEG_FACTOR
+    return base
 
 
 def expand_augmentation(level: str | None) -> dict[str, Any]:
@@ -166,6 +174,7 @@ def resolve_config(
     *,
     defaults: dict[str, Any] | None = None,
     vram_limit_mb: float | None = None,
+    task_type: str = "object_detection",
 ) -> tuple[dict[str, Any], list[str]]:
     """Fill every absent parameter from ``defaults``, then normalize.
 
@@ -181,7 +190,9 @@ def resolve_config(
     for key, value in (defaults or {}).items():
         if merged.get(key) is None:
             merged[key] = value
-    return normalize_training_config(merged, vram_limit_mb=vram_limit_mb)
+    return normalize_training_config(
+        merged, vram_limit_mb=vram_limit_mb, task_type=task_type
+    )
 
 
 def _check_bounds(name: str, value: Any, bounds: dict[str, tuple[float, float]]) -> float:
@@ -203,6 +214,7 @@ def normalize_training_config(
     config: dict[str, Any] | None,
     *,
     vram_limit_mb: float | None = None,
+    task_type: str = "object_detection",
 ) -> tuple[dict[str, Any], list[str]]:
     """Validate and normalize a task's training config.
 
@@ -239,7 +251,9 @@ def normalize_training_config(
             raise ValueError(f"参数 {name} 不可修改（{LOCKED_REASONS.get(name, '')}），固定为 {locked!r}")
 
     if vram_limit_mb and normalized.get("imgsz") and normalized.get("batch"):
-        needed = estimate_train_vram_mb(normalized["imgsz"], normalized["batch"])
+        needed = estimate_train_vram_mb(
+            normalized["imgsz"], normalized["batch"], task_type=task_type
+        )
         if needed > vram_limit_mb:
             suggested = max(1, int(normalized["batch"] * vram_limit_mb / needed))
             raise ValueError(

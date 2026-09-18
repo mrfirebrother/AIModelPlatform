@@ -176,6 +176,30 @@ export default function EvaluationsPage() {
                     <div>· <b>mAP50-95</b>：重合 50%~95% 十个档位分别算再平均，严格版综合分，比较模型看它（一定 ≤ mAP50）</div>
                     <div>· 置信度阈值调高 → Precision 升、Recall 降，调低则相反。参考：mAP50 ≥ 50% 可用，&lt; 20% 基本没学到</div>
                   </div>
+                  {current.metrics.mask && (
+                    <div style={{ marginTop: 14, border: "1px solid var(--surface-border)", borderRadius: 4, padding: 12 }}>
+                      <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>分割掩码指标（mask 口径）</div>
+                      <div className="metric-grid-4">
+                        {([
+                          ["Precision(M)", "掩码级误检", current.metrics.mask.precision * 100, "#1766ad"],
+                          ["Recall(M)", "掩码级漏检", current.metrics.mask.recall * 100, "#1a8a75"],
+                          ["mAP50(M)", "掩码宽松综合分", current.metrics.mask.mAP50 * 100, "#36a1bd"],
+                          ["mAP50-95(M)", "掩码严格综合分", current.metrics.mask.mAP50_95 * 100, "#d77d59"],
+                        ] as [string, string, number, string][]).map(([label, desc, val, color]) => (
+                          <div key={label} className="metric-card-4" style={{ borderTop: `3px solid ${color}` }}>
+                            <div className="mc4-label">{label}</div>
+                            <div className="mc4-value">{val.toFixed(1)}%</div>
+                            <div className="mc4-bar"><div className="mc4-bar-fill" style={{ width: `${Math.min(val, 100)}%`, background: color }} /></div>
+                            <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 6 }}>{desc}</div>
+                          </div>
+                        ))}
+                      </div>
+                      <div style={{ marginTop: 8, fontSize: 12, lineHeight: 1.9, color: "var(--text-muted)" }}>
+                        <div>· 掩码口径按<b>像素级 IoU</b>计算，是分割模型的<b>主指标</b>；上面四项是框口径（分割模型两者都会给）</div>
+                        <div>· mAP50-95(M) 对细长目标（如裂纹）非常严格，通常远低于框口径，属正常现象</div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : null}
 

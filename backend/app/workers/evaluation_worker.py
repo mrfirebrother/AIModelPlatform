@@ -168,6 +168,8 @@ def execute_evaluation(
             # ground-truth count verified from the label files rather than a fake zero.
             "num_ground_truths": _count_ground_truths(dataset_manifest, split),
         }
+        if eval_result.mask_metrics:
+            metrics_dict["mask"] = eval_result.mask_metrics
 
         test_classes = set(eval_result.per_class.keys())
         schema_classes = set(class_ids)
