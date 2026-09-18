@@ -16,7 +16,6 @@ from backend.app.repositories.model_repository import (
     delete_model_node,
     get_model_node,
     list_child_models,
-    list_root_models,
 )
 from backend.app.schemas.model import (
     ModelNodeCreate,
@@ -36,13 +35,9 @@ def create_model(
     db: Session = Depends(get_db),
     _key: str = Depends(verify_api_key),
 ) -> Any:
-    if payload.parent_id is None:
-        existing_roots = list_root_models(db)
-        if existing_roots:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Only one root model is allowed. Delete the existing root model first.",
-            )
+    # Multi-tree design: any number of root models is allowed. Each application
+    # (rust segmentation, crack detection, bridge anomaly, ...) imports its own
+    # pre-trained base model as a root and keeps its own lineage tree.
     try:
         model = create_model_node(
             db,
@@ -312,19 +307,31 @@ async def infer_with_model(
         if results and len(results) > 0:
             r = results[0]
             class_names = dict(r.names) if hasattr(r, "names") and r.names else {}
+            # Segmentation models carry instance masks alongside the boxes; expose each mask
+            # as a polygon (list of [x, y] points in original-image coordinates) so API
+            # consumers can draw or measure the actual defect region, not just its box.
+            mask_polys = None
+            if hasattr(r, "masks") and r.masks is not None and hasattr(r.masks, "xy"):
+                mask_polys = [poly.tolist() for poly in r.masks.xy]
             if hasattr(r, "boxes") and r.boxes is not None:
                 for i in range(len(r.boxes.xyxy)):
                     box = r.boxes.xyxy[i].tolist()
                     conf = float(r.boxes.conf[i])
                     cls_id = int(r.boxes.cls[i])
-                    detections.append({
+                    det = {
                         "class_name": class_names.get(cls_id, str(cls_id)),
                         "confidence": round(conf, 4),
                         "bbox": [round(v, 2) for v in box],
                         "class_id": cls_id,
-                    })
+                    }
+                    if mask_polys is not None and i < len(mask_polys):
+                        det["mask"] = [
+                            [round(px, 2), round(py, 2)] for px, py in mask_polys[i]
+                        ]
+                    detections.append(det)
 
-        # Generate overlay image with detection boxes
+        # Generate overlay image: semi-transparent mask fill + contour for segmentation
+        # models, plain boxes for detection models.
         overlay_base64 = None
         try:
             import cv2
@@ -332,10 +339,21 @@ async def infer_with_model(
 
             img_cv = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
             for det in detections:
-                x1, y1, x2, y2 = [int(v) for v in det["bbox"]]
                 label = f"{det['class_name']} {det['confidence']*100:.1f}%"
-                cv2.rectangle(img_cv, (x1, y1), (x2, y2), (0, 102, 173), 2)
-                cv2.putText(img_cv, label, (x1, y1 - 6), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 102, 173), 1)
+                if det.get("mask"):
+                    pts = np.array([[int(px), int(py)] for px, py in det["mask"]], np.int32)
+                    if len(pts) >= 3:
+                        fill = img_cv.copy()
+                        cv2.fillPoly(fill, [pts], (0, 224, 255))
+                        img_cv = cv2.addWeighted(fill, 0.45, img_cv, 0.55, 0)
+                        cv2.polylines(img_cv, [pts], True, (0, 224, 255), 2)
+                    top_y = int(min(py for _, py in det["mask"]))
+                    left_x = int(min(px for px, _ in det["mask"]))
+                    cv2.putText(img_cv, label, (left_x, max(10, top_y - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 224, 255), 1)
+                else:
+                    x1, y1, x2, y2 = [int(v) for v in det["bbox"]]
+                    cv2.rectangle(img_cv, (x1, y1), (x2, y2), (0, 102, 173), 2)
+                    cv2.putText(img_cv, label, (x1, y1 - 6), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 102, 173), 1)
             _, buffer = cv2.imencode(".jpg", img_cv, [cv2.IMWRITE_JPEG_QUALITY, 85])
             overlay_base64 = base64.b64encode(buffer).decode("utf-8")
         except Exception:

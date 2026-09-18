@@ -11,6 +11,11 @@ const NODE_H = 80;
 const ROOT_W = 200;
 const ROOT_H = 90;
 
+const TASK_TYPE_LABELS: Record<string, string> = {
+  object_detection: "目标检测",
+  instance_segmentation: "实例分割",
+};
+
 function buildLayout(nodes: ModelNode[], rootId: string) {
   const g = new dagre.graphlib.Graph({ directed: true });
   g.setGraph({ rankdir: "TB", ranksep: 60, nodesep: 30, marginx: 20, marginy: 20 });
@@ -51,6 +56,7 @@ export default function ModelsPage() {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [importTaskType, setImportTaskType] = useState("object_detection");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadNodes = () => { setLoading(true); api.getModelNodes().then(setNodes).finally(() => setLoading(false)); };
@@ -62,7 +68,7 @@ export default function ModelsPage() {
     setUploadError(null); setUploadPct(0); setUploading(true);
     try {
       const res = await api.uploadModel(file, (pct) => setUploadPct(pct));
-      await api.createModelNode({ artifactPath: res.file_path, name: file.name.replace(".pt", ""), taskType: "object_detection", modelFamily: "yolo" });
+      await api.createModelNode({ artifactPath: res.file_path, name: file.name.replace(".pt", ""), taskType: importTaskType, modelFamily: "yolo" });
       toast.success("模型已导入"); setShowImport(false); loadNodes();
     } catch (err) { toast.error("导入失败: " + (err as Error).message); }
     setUploading(false); setUploadPct(null);
@@ -81,17 +87,24 @@ export default function ModelsPage() {
 
   const roots = nodes.filter((n) => n.parentId === null);
   const filteredRoots = roots;
-  const hasRoot = roots.length > 0;
 
   return (
     <>
       <div className="toolbar">
-        <button className="btn primary" disabled={hasRoot} onClick={() => setShowImport(true)} style={{ marginLeft: "auto", opacity: hasRoot ? 0.5 : 1, cursor: hasRoot ? "not-allowed" : "pointer" }} title={hasRoot ? "已存在根模型，请先删除后再导入" : ""}>+ 导入根模型</button>
+        <button className="btn primary" onClick={() => setShowImport(true)} style={{ marginLeft: "auto" }}>+ 导入基座模型</button>
       </div>
 
       {showImport && (
         <div className="card" style={{ marginBottom: 14, padding: 24 }}>
-          <div className="card-title" style={{ marginBottom: 16 }}>导入根模型</div>
+          <div className="card-title" style={{ marginBottom: 16 }}>导入基座模型</div>
+          <div className="form-group" style={{ marginBottom: 14 }}>
+            <label>任务类型</label>
+            <select value={importTaskType} onChange={(e) => setImportTaskType(e.target.value)} disabled={uploading}>
+              <option value="object_detection">目标检测（detect）</option>
+              <option value="instance_segmentation">实例分割（segment，如 yolo*-seg.pt）</option>
+            </select>
+            <div className="form-hint">每个应用导入自己的基座（如 yolo11n-seg.pt 做锈蚀分割、yolov8n.pt 做裂纹检测），一棵树一个基座</div>
+          </div>
           <div onDragOver={(e) => { e.preventDefault(); setDragOver(true); }} onDragLeave={() => setDragOver(false)} onDrop={handleDrop} onClick={() => !uploading && fileInputRef.current?.click()} className={`dropzone ${dragOver ? "dropzone-active" : "dropzone-idle"}`}>
             <input ref={fileInputRef} type="file" accept=".pt" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
             {uploading ? (
@@ -128,7 +141,20 @@ export default function ModelsPage() {
 function ModelLineage({ root, allNodes, onNavigate, onDelete, deleting }: { root: ModelNode; allNodes: ModelNode[]; onNavigate: (id: string) => void; onDelete: (id: string) => void; deleting: string | null; }) {
   const byParent = (pid: string) => allNodes.filter((n) => n.parentId === pid);
   const children = byParent(root.id);
-  const { positions, edges, width, height } = useMemo(() => buildLayout(allNodes, root.id), [allNodes, root.id]);
+  // Only this root's own subtree: buildLayout lays out everything it is given,
+  // so passing allNodes would draw the whole forest in every lineage panel.
+  const subtree = useMemo(() => {
+    const ids = new Set([root.id]);
+    let grew = true;
+    while (grew) {
+      grew = false;
+      for (const n of allNodes) {
+        if (n.parentId && ids.has(n.parentId) && !ids.has(n.id)) { ids.add(n.id); grew = true; }
+      }
+    }
+    return allNodes.filter((n) => ids.has(n.id));
+  }, [allNodes, root.id]);
+  const { positions, edges, width, height } = useMemo(() => buildLayout(subtree, root.id), [subtree, root.id]);
   const nodeById = useMemo(() => new Map(allNodes.map((n) => [n.id, n])), [allNodes]);
   const nodeW = (id: string) => (nodeById.get(id)?.parentId === null ? ROOT_W : NODE_W);
   const nodeH = (id: string) => (nodeById.get(id)?.parentId === null ? ROOT_H : NODE_H);
@@ -137,8 +163,8 @@ function ModelLineage({ root, allNodes, onNavigate, onDelete, deleting }: { root
     <div className="model-tree-card">
       <div className="tree-card-header">
         <div className="tree-card-info">
-          <div className="tree-card-title">模型谱系</div>
-          <div className="tree-card-subtitle">{root.name || root.modelFamily} · {root.modelFamily}</div>
+          <div className="tree-card-title">模型谱系 · {root.code || root.name || root.modelFamily}</div>
+          <div className="tree-card-subtitle">{root.name || root.modelFamily} · {TASK_TYPE_LABELS[root.taskType] || root.taskType || root.modelFamily}</div>
         </div>
         <div className="tree-card-actions">
           {children.length === 0 && <button className="btn small danger" onClick={() => onDelete(root.id)} disabled={deleting === root.id}>{deleting === root.id ? "删除中..." : "删除"}</button>}
@@ -155,7 +181,7 @@ function ModelLineage({ root, allNodes, onNavigate, onDelete, deleting }: { root
               return <path key={`${from}-${to}`} d={`M ${fx} ${fy} L ${fx} ${my} L ${tx} ${my} L ${tx} ${ty}`} stroke="#2d83c5" strokeWidth="2" fill="none" />;
             })}
           </svg>
-          {allNodes.map((n) => {
+          {subtree.map((n) => {
             const pos = positions.get(n.id);
             if (!pos) return null;
             const isRoot = n.parentId === null;

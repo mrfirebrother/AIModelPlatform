@@ -8,11 +8,17 @@ import type { ModelNode, Dataset } from "../../lib/api";
 // example1（1083 张训练图）逐轮实测 151~219 秒，稳态约 165 秒/轮 → 2.75 分钟/轮。
 // 单轮耗时 ∝ 每张图的像素数（batch 不改变总计算量），所以按 (imgsz/416)² 换算；
 // 再按训练集张数线性缩放。换卡或数据规模差异较大时需重新标定。
-const MINUTES_PER_EPOCH_AT_416 = 2.75;
+// 分割比检测重：example2 分割（3510 图，439 batch × 1.3 s/it）实测 ≈ 9.5 分钟/轮。
+// 按父模型任务类型取档；新根默认按检测。
+const MINUTES_PER_EPOCH_AT_416_BY_TASK: Record<string, number> = {
+  object_detection: 2.75,
+  instance_segmentation: 9.5,
+};
 const MEASURED_TRAIN_IMAGES = 1083;
 
 // 显存估算与后端 training_params.estimate_train_vram_mb 保持一致：
-// 实测 imgsz 416 + batch 8 → 1280 MB（ultralytics 自报 GPU_mem），随「像素数 × batch」线性放大。
+// 实测 imgsz 416 + batch 8 → 1280 MB（ultralytics 自报 GPU_mem），随「像素数 × batch」线性放大；
+// 分割再乘 1.16（实测 1480 MB）。
 // 4096 MB 的卡要留给桌面和 CUDA 上下文约 800 MB，所以可用上限取 3300 MB。
 const VRAM_LIMIT_MB = 3300;
 const IMGSZ_OPTIONS = [320, 416, 512, 640, 768];
@@ -58,8 +64,9 @@ const AUGMENTATION_OPTIONS = [
   { key: "strong", label: "强增广", hint: "数据少、训练指标高但验证指标低（过拟合）时用" },
 ];
 
-function estimateVramMb(imgsz: number, batch: number) {
-  return Math.round(160 * Math.pow(imgsz / 416, 2) * batch);
+function estimateVramMb(imgsz: number, batch: number, taskType?: string) {
+  const base = 160 * Math.pow(imgsz / 416, 2) * batch;
+  return Math.round(taskType === "instance_segmentation" ? base * 1.16 : base);
 }
 
 export default function TrainingCreatePage() {
@@ -111,13 +118,16 @@ export default function TrainingCreatePage() {
   const allWithSnapshot = selectedList.every((d) => !!d.latestSnapshotId);
 
   const totalTrainImages = selectedList.reduce((s, d) => s + (d.trainCount ?? d.imageCount ?? 0), 0);
+  const parentForEstimate = models.find((m) => m.id === parentId);
+  const minutesPerEpochAt416 =
+    (parentForEstimate?.taskType && MINUTES_PER_EPOCH_AT_416_BY_TASK[parentForEstimate.taskType]) || 2.75;
   const minutesPerEpoch =
-    MINUTES_PER_EPOCH_AT_416 *
+    minutesPerEpochAt416 *
     Math.pow(imgsz / 416, 2) *
     (totalTrainImages > 0 ? totalTrainImages / MEASURED_TRAIN_IMAGES : 1);
   const estimatedMinutes = Math.round(epochs * minutesPerEpoch);
   const estimateText = estimatedMinutes >= 60 ? `${(estimatedMinutes / 60).toFixed(1)} 小时` : `${estimatedMinutes} 分钟`;
-  const vramMb = estimateVramMb(imgsz, batch);
+  const vramMb = estimateVramMb(imgsz, batch, parentForEstimate?.taskType);
   const vramTooHigh = vramMb > VRAM_LIMIT_MB;
   const vramTight = !vramTooHigh && vramMb > VRAM_LIMIT_MB * 0.75;
 
@@ -178,11 +188,12 @@ export default function TrainingCreatePage() {
           <div className="form-group">
             <label>父模型节点</label>
             <select value={parentId} onChange={(e) => setParentId(e.target.value)}>
+              <option value="">（无父模型）新建根节点</option>
               {models.map((m) => (
                 <option key={m.id} value={m.id}>{m.name} ({m.code || m.id.slice(0, 8)})</option>
               ))}
             </select>
-            <div className="form-hint">从该模型继续训练（微调）；换更大的模型请先在「模型谱系」页上传 .pt</div>
+            <div className="form-hint">从该模型继续训练（微调）。新建根节点将从平台默认 yolov8n.pt（检测）开始；分割任务请先在「模型谱系」页导入 yolo*-seg.pt 基座，再选它作为父模型</div>
           </div>
           <div className="form-group">
             <label>数据集（可多选）</label>
