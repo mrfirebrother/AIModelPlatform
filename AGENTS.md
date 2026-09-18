@@ -254,7 +254,14 @@ Hardware: **NVIDIA GeForce GTX 745** — Maxwell, compute capability **sm_50**, 
     `LOCKED_ARGS` (a task cannot change them), everything else in the exposed surface comes from the task config.
 - **Model-tree invariant: a training task without `parentModelNodeId` produces a NEW ROOT node.** The UI does send
   one (`TrainingCreatePage.tsx:54`, defaulting to `models[0]`), but hand-rolled API payloads that omit it litter the
-  tree with extra roots — and `ModelsPage` assumes a single root. Pass the parent when scripting training tasks.
+  tree with extra roots. Pass the parent when scripting training tasks.
+- **Multi-tree design (2026-09-16): the old single-root restriction is gone.** `POST /api/models` no longer rejects
+  a second root; `ModelsPage` now renders every root tree and the import dialog lets you pick the task type
+  (`object_detection` / `instance_segmentation`) for each base model; `TrainingCreatePage` offers an explicit
+  `（无父模型）新建根节点` option. One lineage tree per application base model (e.g. `yolo11n-seg.pt` for rust
+  segmentation, `yolov8n.pt` for crack detection). New-root training without a parent still falls back to
+  `YOLO("yolov8n.pt")` in `YoloTrainer` (detection only — a segmentation tree must start from an imported
+  `*-seg.pt` base). Locked in by `tests/integration/api/test_models.py::test_create_multiple_root_models`.
 - VRAM budget on the 4 GB card: `batch=4, imgsz=416` peaked at **0.518 GB**; `batch=8, imgsz=416` reports
   **1.27 GB** in ultralytics' own `GPU_mem` column (whole-card `nvidia-smi` reads ~1.4-1.6 GB with the desktop's
   ~0.3 GB included). The repo defaults (`batch=16`, `imgsz=640`) will not fit — keep batches small or reduce `imgsz`.
@@ -370,6 +377,37 @@ Hardware: **NVIDIA GeForce GTX 745** — Maxwell, compute capability **sm_50**, 
     from the UI, and the threshold no longer influences what a user sees.
 - Evaluation still takes no GPU lease (`ResourceScheduler(cpu_mode=True)` and no `reserve_gpu` call), which is why
   keeping it on CPU is the safe choice; giving it a lease would be required before ever moving it to the GPU.
+
+## Segmentation Support & Crack Experiments (2026-09-16 → 09-18)
+
+- **The field model shipped in `../rust-analysis-api-exe/models/best.pt` is a SEGMENTATION model**
+  (`yolo11n-seg`, classes: bolt corrosion / layer rust / bolt detachment, imgsz 1024). The platform
+  must support seg end to end to reproduce it. Root `M005` = `yolo11n-seg.pt` (imported with
+  `instance_segmentation`), M006/M007 are crack-seg models trained from it.
+- **Seg training works**: pick a seg base as parent, task_type inherits, ultralytics inherits the task
+  from the model file. `YoloTrainer` fallback (no parent) is `yolov8n.pt` = detection only.
+- **Mask metrics**: ultralytics 8.4.152 exposes seg val results as `metrics.seg` (**not** `metrics.mask`);
+  the evaluator reads both (`yolo_evaluator.py`), the worker stores them under `metrics.mask`, the
+  evaluation page shows a mask section. Three evaluations were backfilled by hand (2026-09-18) because
+  the worker process predates the fix — restart the worker to make new evaluations carry mask metrics.
+- **Inference API outputs masks**: `POST /api/models/{id}/infer` adds `mask` (polygon list) per detection
+  and bakes a semi-transparent mask overlay into `overlay_image`. Detection models unchanged (boxes).
+- **Live epoch progress**: `/api/training/{task_id}/logs` derives `current_epoch` from the attempt's
+  `results.csv` row count while running (DB `current_epoch` is only written at completion). Training list
+  + dashboard poll it every 15 s (`frontend/src/lib/LiveEpoch.tsx`).
+- **Crack-seg experiments on example2 (CHCrack5k, 3510/501/1003, single class `crack`, native 480×480):**
+  - `416 vs 640` (30 ep): no gain — the dataset is 480 px native, 640 only upscales (2.4x compute for nothing).
+  - `nano vs small` (30 ep): identical curves through every epoch — capacity is not the bottleneck here.
+  - `30 vs 100 ep` (nano, 416/b8): test mAP50(M) 0.180 → **0.202**, box mAP50 0.335 → 0.355; best epoch 85
+    (mAP50(M) 0.212); the curve is still rising at 100 → 100 ep is the practical standard, 30 ep only for
+    pipeline checks. The UI 标准 recipe (100 ep) already encodes this; 快速验证 (30) is pipeline-check only.
+  - **Single-run variance is ±0.04 mAP50(M)** (identical configs hit 0.191 vs 0.147 at ~ep 30). Differences
+    below ~0.05 between single runs are noise — decisive A/B needs 2-3 seeds. The 416/640 and nano/small
+    "no difference" verdicts are safe (no systematic gain), but small effects cannot be resolved.
+  - Thin cracks (GT only a few hundred px) are still mostly missed — recall(M) ≈ 0.21 at 100 ep. Remaining
+    levers are annotation quality / longer runs, not resolution, capacity, or a 30-ep regime.
+- VRAM guard: seg costs ×1.16 of detection at the same (imgsz, batch) (measured 1.48 vs 1.28 GB at 416/b8);
+  `estimate_train_vram_mb` takes `task_type`. Epoch-time estimate: seg ≈ 9.5 min/epoch at 416/b8 (detect 2.75).
 
 ## Known Test Failures at `4bcebb77`
 
