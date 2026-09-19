@@ -37,8 +37,9 @@ class Evaluation(UUIDPrimaryKeyMixin, Base):
     model_node_id: Mapped[UUID] = mapped_column(
         ForeignKey("model_nodes.id", ondelete="RESTRICT"), nullable=False
     )
-    dataset_snapshot_id: Mapped[UUID] = mapped_column(
-        ForeignKey("dataset_snapshots.id", ondelete="RESTRICT"), nullable=False
+    # nullable since 0007: dataset deletion clears the pointer, evaluation history stays
+    dataset_snapshot_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("dataset_snapshots.id", ondelete="RESTRICT"), nullable=True
     )
     auto_status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
     evaluation_policy_json: Mapped[dict[str, Any]] = json_column()

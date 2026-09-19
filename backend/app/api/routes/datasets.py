@@ -671,11 +671,31 @@ def delete_dataset(
     if dataset is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset not found")
     try:
-        # Delete snapshots first (foreign key constraint)
+        from sqlalchemy import text as _text
+
         snapshots = db.execute(select(DatasetSnapshot).where(DatasetSnapshot.dataset_id == dataset_id)).scalars().all()
-        for snapshot in snapshots:
-            db.delete(snapshot)
-        db.flush()
+        if snapshots:
+            # Historical references keep their rows but lose the snapshot pointer
+            # (FK columns are nullable since migration 0007). Text-level UPDATEs
+            # for the same reason as model deletion: some of these columns are
+            # sealed by immutability guards.
+            ids = [str(s.id) for s in snapshots]
+            hex_ids = [s.id.hex for s in snapshots]
+            id_list = ", ".join(f"'{i}'" for i in ids + hex_ids)
+            for table, column in (
+                ("training_tasks", "dataset_snapshot_id"),
+                ("checkpoints", "dataset_snapshot_id"),
+                ("evaluations", "dataset_snapshot_id"),
+                ("model_nodes", "dataset_snapshot_id"),
+            ):
+                db.execute(
+                    _text(f"UPDATE {table} SET {column} = NULL WHERE {column} IN ({id_list})")
+                )
+            db.flush()
+            # Delete snapshots first (foreign key constraint)
+            for snapshot in snapshots:
+                db.delete(snapshot)
+            db.flush()
 
         log_operation(
             db,

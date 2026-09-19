@@ -140,3 +140,56 @@ async def test_create_snapshot(app, session, headers):
     body = response.json()
     assert body["dataset_id"] == str(dataset.id)
     assert body["label_schema_id"] == str(schema.id)
+
+
+@pytest.mark.anyio
+async def test_delete_dataset_clears_task_snapshot_reference(app, session, headers):
+    """删除被训练任务引用的数据集：任务历史保留，快照指针清空。"""
+    from backend.app.models import ModelNode, TrainingTask
+
+    ds = Dataset(name="tx-del-ds")
+    session.add(ds)
+    session.flush()
+    schema = LabelSchema(name="tx-del-schema")
+    session.add(schema)
+    session.flush()
+    snap = DatasetSnapshot(
+        dataset_id=ds.id,
+        label_schema_id=schema.id,
+        manifest_path="/data/store/tx-del.json",
+        manifest_hash="sha256:tx-del",
+    )
+    session.add(snap)
+    session.flush()
+    model = ModelNode(
+        code="TX-DS-MODEL",
+        task_type="object_detection",
+        model_family="yolo",
+        artifact_path="/data/models/txdel.pt",
+        artifact_hash="sha256:txdel",
+        status="candidate",
+    )
+    session.add(model)
+    session.flush()
+    task = TrainingTask(
+        parent_model_node_id=model.id,
+        dataset_snapshot_id=snap.id,
+        task_type="object_detection",
+        model_family="yolo",
+        status="completed",
+    )
+    session.add(task)
+    session.commit()
+    ds_id = ds.id
+    task_id = task.id
+    session.expunge_all()
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.delete(f"/api/datasets/{ds_id}", headers=headers)
+    assert response.status_code == 204
+
+    session.expire_all()
+    assert session.get(Dataset, ds_id) is None
+    assert session.get(TrainingTask, task_id).dataset_snapshot_id is None

@@ -38,8 +38,9 @@ class TrainingTask(UUIDPrimaryKeyMixin, Base):
     parent_model_node_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("model_nodes.id", ondelete="RESTRICT")
     )
-    dataset_snapshot_id: Mapped[UUID] = mapped_column(
-        ForeignKey("dataset_snapshots.id", ondelete="RESTRICT"), nullable=False
+    # nullable since 0007: dataset deletion clears the pointer, task history stays
+    dataset_snapshot_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("dataset_snapshots.id", ondelete="RESTRICT"), nullable=True
     )
     target_binding_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("model_bindings.id", ondelete="RESTRICT")
@@ -165,8 +166,9 @@ class Checkpoint(UUIDPrimaryKeyMixin, Base):
         ForeignKey("training_attempts.id", ondelete="RESTRICT"), nullable=False
     )
     parent_artifact_hash: Mapped[str] = mapped_column(String(255), nullable=False)
-    dataset_snapshot_id: Mapped[UUID] = mapped_column(
-        ForeignKey("dataset_snapshots.id", ondelete="RESTRICT"), nullable=False
+    # nullable since 0007: dataset deletion clears the pointer, checkpoint history stays
+    dataset_snapshot_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("dataset_snapshots.id", ondelete="RESTRICT"), nullable=True
     )
     training_config_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     epoch: Mapped[int] = mapped_column(Integer, nullable=False)
