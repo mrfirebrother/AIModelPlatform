@@ -269,6 +269,13 @@ def delete_model(
             ).scalars().all()
         )
         for binding in bindings_to_teardown:
+            # Clear the live pointers FIRST and flush: the DB enforces
+            # fk_binding_current_release (declared in the DB, not in the ORM),
+            # so the release rows cannot be deleted while the binding row still
+            # points at them.
+            binding.current_release_id = None
+            binding.current_runtime_instance_id = None
+            db.flush()
             binding_instances = list(
                 db.execute(
                     _select(_RuntimeInstance).where(_RuntimeInstance.binding_id == binding.id)
@@ -291,6 +298,11 @@ def delete_model(
             binding.current_runtime_instance_id = None
             db.delete(binding)
 
+        # Flush the teardown deletes BEFORE the text updates below: leaving them
+        # pending makes the autoflush order run the UPDATE first, which trips
+        # the FK on the not-yet-deleted rows (observed, see test_delete_model_*).
+        db.flush()
+
         db.execute(
             _text(
                 "UPDATE model_binding_releases SET model_node_id = NULL "
@@ -306,6 +318,17 @@ def delete_model(
             {"dashed": str(uuid_id), "hex": uuid_id.hex},
         )
 
+        # GPU residency plans are meaningless without their model - cascade them.
+        from backend.app.models import ModelResidencyPlan as _ResidencyPlan
+
+        plans = list(
+            db.execute(
+                _select(_ResidencyPlan).where(_ResidencyPlan.model_node_id == uuid_id)
+            ).scalars().all()
+        )
+        for plan in plans:
+            db.delete(plan)
+
         evals = list(db.execute(_select(_Evaluation).where(_Evaluation.model_node_id == uuid_id)).scalars().all())
         for ev in evals:
             db.delete(ev)
@@ -316,12 +339,18 @@ def delete_model(
     except HTTPException:
         raise
     except Exception as exc:
-        # Translate FK violations into 400 with clear message
+        # Translate FK violations into a 400 that names the offending table
         err_msg = str(exc)
         if "ForeignKeyViolation" in err_msg or "violates foreign key" in err_msg:
+            import re as _re
+
+            table = "unknown"
+            match = _re.search(r'referenced from table "(\w+)"', err_msg)
+            if match:
+                table = match.group(1)
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Cannot delete model: still referenced by other records (e.g. training tasks or releases).",
+                detail=f"Cannot delete model: still referenced by table '{table}'.",
             ) from exc
         raise
     log_operation(

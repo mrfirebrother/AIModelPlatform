@@ -107,6 +107,12 @@ def delete_binding(
             manager.transition_status(db, inst.id, "draining")
             manager.transition_status(db, inst.id, "stopped")
 
+    # Clear the live pointers FIRST: the DB enforces fk_binding_current_release,
+    # so release rows cannot be deleted while the binding still points at them.
+    binding.current_release_id = None
+    binding.current_runtime_instance_id = None
+    db.flush()
+
     releases = list(
         db.execute(
             _select(_BindingRelease).where(_BindingRelease.binding_id == binding_id)
@@ -117,8 +123,6 @@ def delete_binding(
     for inst in instances:
         db.delete(inst)
 
-    binding.current_release_id = None
-    binding.current_runtime_instance_id = None
     db.delete(binding)
     db.flush()
 

@@ -3,7 +3,7 @@
 from typing import Any, Generator
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -20,6 +20,12 @@ def engine():
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
+
+    @event.listens_for(eng, "connect")
+    def _enable_fk(dbapi_conn, _record):
+        # 强制外键约束，与生产 Postgres 行为一致（否则 FK 顺序类 bug 测不出来）
+        dbapi_conn.execute("PRAGMA foreign_keys=ON")
+
     Base.metadata.create_all(eng)
     yield eng
     eng.dispose()

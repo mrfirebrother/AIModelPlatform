@@ -38,7 +38,13 @@ class ModelBinding(UUIDPrimaryKeyMixin, Base):
     )
 
     external_ref: Mapped[str | None] = mapped_column(String(255))
-    current_release_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True))
+    # FK parity note: the DB declares fk_binding_current_release on this column
+    # (migration 0001); declared here too so test schemas enforce the same rule.
+    current_release_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("model_binding_releases.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
     current_runtime_instance_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True))
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="unbound")
     created_at: Mapped[datetime] = mapped_column(
@@ -102,7 +108,12 @@ class BindingRelease(UUIDPrimaryKeyMixin, Base):
     inference_config_json: Mapped[dict[str, Any]] = json_column()
     inference_config_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     release_type: Mapped[str] = mapped_column(String(32), nullable=False, default="normal")
-    rollback_target_release_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True))
+    # FK parity note: the DB declares fk_release_rollback_target on this column.
+    rollback_target_release_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("model_binding_releases.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
     reason: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
