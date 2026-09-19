@@ -71,7 +71,9 @@ class TrainingTaskCreate(BaseModel):
 class TrainingTaskResponse(BaseModel):
     id: UUID
     parent_model_node_id: UUID | None
-    dataset_snapshot_id: UUID
+    # nullable since migration 0007: dataset deletion clears the pointer on
+    # historical tasks, and the list endpoint must keep serving them
+    dataset_snapshot_id: UUID | None = None
     target_binding_id: UUID | None
     task_type: str
     model_family: str

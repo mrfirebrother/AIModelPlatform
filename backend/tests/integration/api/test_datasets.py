@@ -193,3 +193,11 @@ async def test_delete_dataset_clears_task_snapshot_reference(app, session, heade
     session.expire_all()
     assert session.get(Dataset, ds_id) is None
     assert session.get(TrainingTask, task_id).dataset_snapshot_id is None
+
+    # 快照指针清空后，任务列表必须仍能正常序列化（曾因 schema 要求非空 UUID 而 500）
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        listing = await client.get("/api/training/tasks", headers=headers)
+    assert listing.status_code == 200
+    assert any(t["id"] == str(task_id) for t in listing.json()["tasks"])
