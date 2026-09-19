@@ -231,8 +231,56 @@ def delete_model(
 
     # Cascade delete dependent evaluations (FK RESTRICT would otherwise cause 500)
     try:
+        from sqlalchemy import func as _func
         from sqlalchemy import select as _select  # local import to avoid cycle
+        from sqlalchemy import text as _text
+        from backend.app.models import BindingRelease as _BindingRelease
         from backend.app.models import Evaluation as _Evaluation
+        from backend.app.models import RuntimeInstance as _RuntimeInstance
+
+        # Task history stays, but its parent pointer is cleared so terminal task
+        # rows don't block deleting a model that trained children (e.g. M002).
+        # Core-level statement on purpose: `parent_model_node_id` is sealed by
+        # TrainingTask's immutability guard, which rejects an ORM-level update.
+        db.execute(
+            _text(
+                "UPDATE training_tasks SET parent_model_node_id = NULL "
+                "WHERE parent_model_node_id = :dashed OR parent_model_node_id = :hex"
+            ),
+            # both forms: Postgres compares against the dashed text, SQLite stores
+            # UUIDs as 32-char hex without dashes
+            {"dashed": str(uuid_id), "hex": uuid_id.hex},
+        )
+
+        # Releases and runtime instances reference the model hard (NOT NULL) and
+        # are part of the serving history - refuse with a readable reason instead
+        # of a raw FK error.
+        release_count = db.execute(
+            _select(_func.count())
+            .select_from(_BindingRelease)
+            .where(_BindingRelease.model_node_id == uuid_id)
+        ).scalar() or 0
+        if release_count:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"Cannot delete model: {release_count} release record(s) reference it. "
+                    "删除前请先在「发布」页处理引用该模型的发布。"
+                ),
+            )
+        instance_count = db.execute(
+            _select(_func.count())
+            .select_from(_RuntimeInstance)
+            .where(_RuntimeInstance.model_node_id == uuid_id)
+        ).scalar() or 0
+        if instance_count:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"Cannot delete model: {instance_count} runtime instance(s) reference it. "
+                    "已发布的模型不能直接删除，请先停用其绑定。"
+                ),
+            )
 
         evals = list(db.execute(_select(_Evaluation).where(_Evaluation.model_node_id == uuid_id)).scalars().all())
         for ev in evals:
@@ -241,6 +289,8 @@ def delete_model(
             db.flush()
 
         delete_model_node(db, uuid_id)
+    except HTTPException:
+        raise
     except Exception as exc:
         # Translate FK violations into 400 with clear message
         err_msg = str(exc)

@@ -79,6 +79,101 @@ async def test_create_multiple_root_models(app, session, headers):
 
 
 @pytest.mark.anyio
+async def test_delete_model_clears_task_parent_reference(app, session, headers):
+    """Deleting a model that trained children must clear the tasks' parent
+    pointer instead of failing with the raw FK 400 (reported bug)."""
+    from backend.app.models import Dataset, DatasetSnapshot, LabelSchema, TrainingTask
+
+    parent = ModelNode(
+        code="TX-PARENT",
+        task_type="object_detection",
+        model_family="yolo",
+        artifact_path="/data/models/parent.pt",
+        artifact_hash="sha256:parent",
+        status="candidate",
+    )
+    session.add(parent)
+    session.flush()
+    schema = LabelSchema(name="tx-schema")
+    session.add(schema)
+    session.flush()
+    ds = Dataset(name="tx-ds")
+    session.add(ds)
+    session.flush()
+    snap = DatasetSnapshot(
+        dataset_id=ds.id,
+        label_schema_id=schema.id,
+        manifest_path="/data/store/tx.json",
+        manifest_hash="sha256:tx",
+    )
+    session.add(snap)
+    session.flush()
+    task = TrainingTask(
+        parent_model_node_id=parent.id,
+        dataset_snapshot_id=snap.id,
+        task_type="object_detection",
+        model_family="yolo",
+        status="completed",
+    )
+    session.add(task)
+    session.commit()
+    task_id = task.id
+    parent_id = parent.id
+    # Detach the committed objects: production API requests run in a session
+    # that never loaded these rows, while this test session would otherwise
+    # hold expired copies the immutability guard rejects refreshing after the
+    # route's out-of-band UPDATE.
+    session.expunge(task)
+    session.expunge(parent)
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.delete(f"/api/models/{parent_id}", headers=headers)
+    assert response.status_code == 200
+    session.expire_all()
+    assert session.get(TrainingTask, task_id).parent_model_node_id is None
+
+
+@pytest.mark.anyio
+async def test_delete_model_with_release_is_refused(app, session, headers):
+    """A model referenced by a release record cannot be deleted."""
+    from backend.app.models import BindingRelease, ModelBinding
+
+    model = ModelNode(
+        code="TX-REL",
+        task_type="object_detection",
+        model_family="yolo",
+        artifact_path="/data/models/rel.pt",
+        artifact_hash="sha256:rel",
+        status="approved",
+    )
+    session.add(model)
+    session.flush()
+    binding = ModelBinding(external_ref="tx-ref")
+    session.add(binding)
+    session.flush()
+    release = BindingRelease(
+        binding_id=binding.id,
+        model_node_id=model.id,
+        revision_no=1,
+        inference_config_json={},
+        inference_config_hash="sha256:cfg",
+        release_type="normal",
+        status="pending",
+    )
+    session.add(release)
+    session.commit()
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.delete(f"/api/models/{model.id}", headers=headers)
+    assert response.status_code == 400
+    assert "release" in response.json()["detail"].lower()
+
+
+@pytest.mark.anyio
 async def test_list_model_nodes(app, session, headers):
     model = ModelNode(
         task_type="object_detection",
