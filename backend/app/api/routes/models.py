@@ -252,25 +252,45 @@ def delete_model(
             {"dashed": str(uuid_id), "hex": uuid_id.hex},
         )
 
-        # An active release (or a serving instance) is live traffic - refuse with
-        # a readable reason. Historical references (superseded/pending releases,
-        # stopped instances) are cleared; their rows stay.
-        active_release_count = db.execute(
-            _select(_func.count())
-            .select_from(_BindingRelease)
-            .where(
-                _BindingRelease.model_node_id == uuid_id,
-                _BindingRelease.status == "active",
+        # A released model is torn down as part of the deletion: any binding whose
+        # active release points at this model is 解绑下线'd (instances stopped,
+        # release history dropped, binding row removed). Historical references in
+        # other rows (superseded releases, stopped instances) are cleared; the
+        # rows stay as history.
+        from backend.app.models import ModelBinding as _ModelBinding
+        from backend.app.runtime.runtime_instance import RuntimeInstanceManager
+
+        manager = RuntimeInstanceManager()
+        bindings_to_teardown = list(
+            db.execute(
+                _select(_ModelBinding)
+                .join(_BindingRelease, _ModelBinding.current_release_id == _BindingRelease.id)
+                .where(_BindingRelease.model_node_id == uuid_id)
+            ).scalars().all()
+        )
+        for binding in bindings_to_teardown:
+            binding_instances = list(
+                db.execute(
+                    _select(_RuntimeInstance).where(_RuntimeInstance.binding_id == binding.id)
+                ).scalars().all()
             )
-        ).scalar() or 0
-        if active_release_count:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    f"Cannot delete model: {active_release_count} active release(s) reference it. "
-                    "该模型正在对外发布，请先删除对应绑定（解绑下线）再删除模型。"
-                ),
+            for inst in binding_instances:
+                if inst.status == "serving":
+                    manager.transition_status(db, inst.id, "draining")
+                    manager.transition_status(db, inst.id, "stopped")
+            binding_releases = list(
+                db.execute(
+                    _select(_BindingRelease).where(_BindingRelease.binding_id == binding.id)
+                ).scalars().all()
             )
+            for release in binding_releases:
+                db.delete(release)
+            for inst in binding_instances:
+                db.delete(inst)
+            binding.current_release_id = None
+            binding.current_runtime_instance_id = None
+            db.delete(binding)
+
         db.execute(
             _text(
                 "UPDATE model_binding_releases SET model_node_id = NULL "
@@ -278,23 +298,6 @@ def delete_model(
             ),
             {"dashed": str(uuid_id), "hex": uuid_id.hex},
         )
-
-        serving_instance_count = db.execute(
-            _select(_func.count())
-            .select_from(_RuntimeInstance)
-            .where(
-                _RuntimeInstance.model_node_id == uuid_id,
-                _RuntimeInstance.status == "serving",
-            )
-        ).scalar() or 0
-        if serving_instance_count:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    f"Cannot delete model: {serving_instance_count} serving instance(s) reference it. "
-                    "该模型正在服务中，请先删除对应绑定（解绑下线）再删除模型。"
-                ),
-            )
         db.execute(
             _text(
                 "UPDATE runtime_instances SET model_node_id = NULL "

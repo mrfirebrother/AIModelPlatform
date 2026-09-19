@@ -136,9 +136,10 @@ async def test_delete_model_clears_task_parent_reference(app, session, headers):
 
 
 @pytest.mark.anyio
-async def test_delete_model_with_active_release_is_refused(app, session, headers):
-    """A model referenced by an ACTIVE release (live traffic) cannot be deleted."""
-    from backend.app.models import BindingRelease, ModelBinding
+async def test_delete_model_with_active_release_tears_down_binding(app, session, headers):
+    """Deleting a released model tears its binding down (instances stopped,
+    releases dropped, binding removed) instead of refusing."""
+    from backend.app.models import BindingRelease, ModelBinding, RuntimeInstance
 
     model = ModelNode(
         code="TX-REL",
@@ -163,16 +164,47 @@ async def test_delete_model_with_active_release_is_refused(app, session, headers
         status="active",
     )
     session.add(release)
+    session.flush()
+    binding.current_release_id = release.id
+    instance = RuntimeInstance(
+        binding_id=binding.id,
+        release_id=release.id,
+        model_node_id=model.id,
+        config_hash="sha256:cfg",
+        generation=1,
+        fencing_token=1,
+        gpu_device="0",
+        status="serving",
+    )
+    session.add(instance)
+    session.flush()
+    binding.current_runtime_instance_id = instance.id
     session.commit()
     model_id = model.id
+    binding_id = binding.id
     session.expunge(model)
+    session.expunge(binding)
 
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://test"
     ) as client:
         response = await client.delete(f"/api/models/{model_id}", headers=headers)
-    assert response.status_code == 400
-    assert "active release" in response.json()["detail"].lower()
+    assert response.status_code == 200
+
+    session.expire_all()
+    assert session.get(ModelBinding, binding_id) is None
+    from sqlalchemy import select as _select
+
+    assert list(
+        session.execute(
+            _select(BindingRelease).where(BindingRelease.binding_id == binding_id)
+        ).scalars().all()
+    ) == []
+    assert list(
+        session.execute(
+            _select(RuntimeInstance).where(RuntimeInstance.binding_id == binding_id)
+        ).scalars().all()
+    ) == []
 
 
 @pytest.mark.anyio
