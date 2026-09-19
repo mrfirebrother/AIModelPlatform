@@ -136,8 +136,8 @@ async def test_delete_model_clears_task_parent_reference(app, session, headers):
 
 
 @pytest.mark.anyio
-async def test_delete_model_with_release_is_refused(app, session, headers):
-    """A model referenced by a release record cannot be deleted."""
+async def test_delete_model_with_active_release_is_refused(app, session, headers):
+    """A model referenced by an ACTIVE release (live traffic) cannot be deleted."""
     from backend.app.models import BindingRelease, ModelBinding
 
     model = ModelNode(
@@ -160,17 +160,63 @@ async def test_delete_model_with_release_is_refused(app, session, headers):
         inference_config_json={},
         inference_config_hash="sha256:cfg",
         release_type="normal",
-        status="pending",
+        status="active",
     )
     session.add(release)
     session.commit()
+    model_id = model.id
+    session.expunge(model)
 
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://test"
     ) as client:
-        response = await client.delete(f"/api/models/{model.id}", headers=headers)
+        response = await client.delete(f"/api/models/{model_id}", headers=headers)
     assert response.status_code == 400
-    assert "release" in response.json()["detail"].lower()
+    assert "active release" in response.json()["detail"].lower()
+
+
+@pytest.mark.anyio
+async def test_delete_model_clears_historical_release_reference(app, session, headers):
+    """Historical (non-active) release rows keep their history but lose the model
+    pointer, so the model can be deleted."""
+    from backend.app.models import BindingRelease, ModelBinding
+
+    model = ModelNode(
+        code="TX-HIST",
+        task_type="object_detection",
+        model_family="yolo",
+        artifact_path="/data/models/hist.pt",
+        artifact_hash="sha256:hist",
+        status="approved",
+    )
+    session.add(model)
+    session.flush()
+    binding = ModelBinding(external_ref="tx-hist-ref")
+    session.add(binding)
+    session.flush()
+    release = BindingRelease(
+        binding_id=binding.id,
+        model_node_id=model.id,
+        revision_no=1,
+        inference_config_json={},
+        inference_config_hash="sha256:cfg",
+        release_type="normal",
+        status="superseded",
+    )
+    session.add(release)
+    session.commit()
+    model_id = model.id
+    release_id = release.id
+    session.expunge(model)
+    session.expunge(release)
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.delete(f"/api/models/{model_id}", headers=headers)
+    assert response.status_code == 200
+    session.expire_all()
+    assert session.get(BindingRelease, release_id).model_node_id is None
 
 
 @pytest.mark.anyio

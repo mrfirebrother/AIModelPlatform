@@ -96,8 +96,8 @@ class BindingRelease(UUIDPrimaryKeyMixin, Base):
         ForeignKey("model_bindings.id", ondelete="RESTRICT"), nullable=False
     )
     revision_no: Mapped[int] = mapped_column(Integer, nullable=False)
-    model_node_id: Mapped[UUID] = mapped_column(
-        ForeignKey("model_nodes.id", ondelete="RESTRICT"), nullable=False
+    model_node_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("model_nodes.id", ondelete="RESTRICT"), nullable=True
     )
     inference_config_json: Mapped[dict[str, Any]] = json_column()
     inference_config_hash: Mapped[str] = mapped_column(String(255), nullable=False)

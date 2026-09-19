@@ -125,3 +125,72 @@ async def test_rollback_release(app, session, headers):
     body = response.json()
     assert body["release_type"] == "rollback"
     assert body["rollback_target_release_id"] == str(release1.id)
+
+
+@pytest.mark.anyio
+async def test_delete_binding_tears_down_releases_and_instances(app, session, headers):
+    """解绑下线：删除绑定会停服务实例、删发布记录、删绑定行。"""
+    from backend.app.models import RuntimeInstance
+
+    binding = ModelBinding(external_ref="ref-teardown", status="unbound")
+    model = ModelNode(
+        code="TX-BIND",
+        task_type="object_detection",
+        model_family="yolo",
+        artifact_path="/data/models/bind.pt",
+        artifact_hash="sha256:bind",
+        status="approved",
+    )
+    session.add(binding)
+    session.add(model)
+    session.flush()
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        rel = await client.post(
+            "/api/releases",
+            json={
+                "binding_id": str(binding.id),
+                "model_node_id": str(model.id),
+                "inference_config_json": {"confidence_threshold": 0.1},
+                "reason": "teardown test",
+            },
+            headers=headers,
+        )
+        assert rel.status_code == 201
+        act = await client.post(
+            f"/api/releases/{rel.json()['id']}/activate", headers=headers
+        )
+        assert act.status_code == 200
+
+        # activation stands up a serving instance (binding_service.activate_release)
+        session.expire_all()
+        assert (
+            session.execute(
+                RuntimeInstance.__table__.select().where(
+                    RuntimeInstance.__table__.c.binding_id == binding.id
+                )
+            ).scalars().first()
+            is not None
+        )
+
+        resp = await client.delete(f"/api/bindings/{binding.id}", headers=headers)
+        assert resp.status_code == 204
+
+    session.expire_all()
+    from sqlalchemy import select as _select
+
+    assert session.get(ModelBinding, binding.id) is None
+    releases = list(
+        session.execute(
+            _select(BindingRelease).where(BindingRelease.binding_id == binding.id)
+        ).scalars().all()
+    )
+    assert releases == []
+    instances = list(
+        session.execute(
+            _select(RuntimeInstance).where(RuntimeInstance.binding_id == binding.id)
+        ).scalars().all()
+    )
+    assert instances == []

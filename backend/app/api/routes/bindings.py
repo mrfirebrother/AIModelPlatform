@@ -75,6 +75,68 @@ def get_binding_by_id(
     return binding
 
 
+@router.delete("/bindings/{binding_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_binding(
+    binding_id: UUID,
+    db: Session = Depends(get_db),
+    _key: str = Depends(verify_api_key),
+):
+    """Tear down a binding: stop serving instances, drop release history, delete the row.
+
+    This is the platform's "解绑下线" lifecycle step. After it, a released model is no
+    longer referenced by active records and can be deleted.
+    """
+    from sqlalchemy import select as _select
+
+    from backend.app.models import BindingRelease as _BindingRelease
+    from backend.app.models import RuntimeInstance as _RuntimeInstance
+    from backend.app.runtime.runtime_instance import RuntimeInstanceManager
+
+    binding = get_binding(db, binding_id)
+    if binding is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Binding not found")
+
+    manager = RuntimeInstanceManager()
+    instances = list(
+        db.execute(
+            _select(_RuntimeInstance).where(_RuntimeInstance.binding_id == binding_id)
+        ).scalars().all()
+    )
+    for inst in instances:
+        if inst.status == "serving":
+            manager.transition_status(db, inst.id, "draining")
+            manager.transition_status(db, inst.id, "stopped")
+
+    releases = list(
+        db.execute(
+            _select(_BindingRelease).where(_BindingRelease.binding_id == binding_id)
+        ).scalars().all()
+    )
+    for release in releases:
+        db.delete(release)
+    for inst in instances:
+        db.delete(inst)
+
+    binding.current_release_id = None
+    binding.current_runtime_instance_id = None
+    db.delete(binding)
+    db.flush()
+
+    log_operation(
+        db,
+        operation_type="binding.delete",
+        resource_type="model_binding",
+        resource_id=binding_id,
+        status="success",
+        summary_json={
+            "binding_id": str(binding_id),
+            "releases_removed": len(releases),
+            "instances_removed": len(instances),
+        },
+    )
+    return None
+
+
 @router.post("/releases", response_model=ReleaseResponse, status_code=status.HTTP_201_CREATED)
 def create_new_release(
     payload: ReleaseCreate,

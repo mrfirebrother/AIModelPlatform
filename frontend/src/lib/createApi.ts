@@ -125,6 +125,7 @@ const realApi: ApiClient = {
   getModelNode: (id) => fetchJson<any>(`/api/models/${id}`).then(camelizeKeys).catch(() => null),
   createModelNode: (data) => postJson<any>("/api/models", data),
   deleteModel: (id) => deleteJson<any>(`/api/models/${id}`).then(() => true),
+  deleteBinding: (id) => deleteJson<any>(`/api/bindings/${id}`).then(() => undefined),
   getBindings: () => fetchJson<any>("/api/bindings").then((r) => camelizeKeys(r.bindings ?? r)),
   getReleases: (bindingId) =>
     fetchJson<any>(bindingId ? `/api/bindings/${bindingId}/releases` : "/api/releases").then((r) => camelizeKeys(r.releases ?? r)),

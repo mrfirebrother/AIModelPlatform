@@ -252,35 +252,56 @@ def delete_model(
             {"dashed": str(uuid_id), "hex": uuid_id.hex},
         )
 
-        # Releases and runtime instances reference the model hard (NOT NULL) and
-        # are part of the serving history - refuse with a readable reason instead
-        # of a raw FK error.
-        release_count = db.execute(
+        # An active release (or a serving instance) is live traffic - refuse with
+        # a readable reason. Historical references (superseded/pending releases,
+        # stopped instances) are cleared; their rows stay.
+        active_release_count = db.execute(
             _select(_func.count())
             .select_from(_BindingRelease)
-            .where(_BindingRelease.model_node_id == uuid_id)
+            .where(
+                _BindingRelease.model_node_id == uuid_id,
+                _BindingRelease.status == "active",
+            )
         ).scalar() or 0
-        if release_count:
+        if active_release_count:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=(
-                    f"Cannot delete model: {release_count} release record(s) reference it. "
-                    "删除前请先在「发布」页处理引用该模型的发布。"
+                    f"Cannot delete model: {active_release_count} active release(s) reference it. "
+                    "该模型正在对外发布，请先删除对应绑定（解绑下线）再删除模型。"
                 ),
             )
-        instance_count = db.execute(
+        db.execute(
+            _text(
+                "UPDATE model_binding_releases SET model_node_id = NULL "
+                "WHERE model_node_id = :dashed OR model_node_id = :hex"
+            ),
+            {"dashed": str(uuid_id), "hex": uuid_id.hex},
+        )
+
+        serving_instance_count = db.execute(
             _select(_func.count())
             .select_from(_RuntimeInstance)
-            .where(_RuntimeInstance.model_node_id == uuid_id)
+            .where(
+                _RuntimeInstance.model_node_id == uuid_id,
+                _RuntimeInstance.status == "serving",
+            )
         ).scalar() or 0
-        if instance_count:
+        if serving_instance_count:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=(
-                    f"Cannot delete model: {instance_count} runtime instance(s) reference it. "
-                    "已发布的模型不能直接删除，请先停用其绑定。"
+                    f"Cannot delete model: {serving_instance_count} serving instance(s) reference it. "
+                    "该模型正在服务中，请先删除对应绑定（解绑下线）再删除模型。"
                 ),
             )
+        db.execute(
+            _text(
+                "UPDATE runtime_instances SET model_node_id = NULL "
+                "WHERE model_node_id = :dashed OR model_node_id = :hex"
+            ),
+            {"dashed": str(uuid_id), "hex": uuid_id.hex},
+        )
 
         evals = list(db.execute(_select(_Evaluation).where(_Evaluation.model_node_id == uuid_id)).scalars().all())
         for ev in evals:

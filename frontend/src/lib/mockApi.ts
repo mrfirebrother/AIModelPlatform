@@ -387,6 +387,15 @@ export const mockApi: ApiClient = {
     return [...bindings];
   },
 
+  async deleteBinding(id: string): Promise<void> {
+    await delay(60);
+    const idx = bindings.findIndex((b) => b.id === id);
+    if (idx >= 0) bindings.splice(idx, 1);
+    for (let i = releases.length - 1; i >= 0; i--) {
+      if (releases[i].bindingId === id) releases.splice(i, 1);
+    }
+  },
+
   async getReleases(bindingId?: string): Promise<ModelBindingRelease[]> {
     await delay(60);
     if (bindingId) return releases.filter((r) => r.bindingId === bindingId);

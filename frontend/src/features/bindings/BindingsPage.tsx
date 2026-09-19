@@ -1,21 +1,36 @@
-import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { createApi } from "../../lib/createApi";
+import { useToast } from "../../lib/toast";
 import type { ModelBinding, ModelBindingRelease } from "../../lib/api";
 
 export default function BindingsPage() {
   const api = useMemo(() => createApi(), []);
   const navigate = useNavigate();
+  const toast = useToast();
   const [bindings, setBindings] = useState<ModelBinding[]>([]);
   const [releases, setReleases] = useState<ModelBindingRelease[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
 
-  useEffect(() => {
+  const reload = () => {
     Promise.all([api.getBindings(), api.getReleases()]).then(([b, r]) => {
       setBindings(b);
       setReleases(r);
     }).catch(() => {});
-  }, [api]);
+  };
+  useEffect(() => { reload(); }, [api]);
+
+  const handleDelete = async (e: React.MouseEvent, b: ModelBinding) => {
+    e.stopPropagation();
+    const ok = await toast.confirm(`确定解绑并下线「${b.name || b.id.slice(0, 8)}」？\n将停用服务实例并删除其全部发布记录。`);
+    if (!ok) return;
+    try {
+      await api.deleteBinding(b.id);
+      toast.success("已解绑下线");
+      if (selected === b.id) setSelected(null);
+      reload();
+    } catch (err) { toast.error("解绑失败: " + (err as Error).message); }
+  };
 
   const bindingReleases = selected ? releases.filter((r) => r.bindingId === selected) : [];
 
@@ -52,6 +67,9 @@ export default function BindingsPage() {
                     <td>
                       <button className="btn small" onClick={(e) => { e.stopPropagation(); navigate("/releases"); }}>
                         发布历史
+                      </button>{" "}
+                      <button className="btn small danger" onClick={(e) => handleDelete(e, b)}>
+                        解绑下线
                       </button>
                     </td>
                   </tr>

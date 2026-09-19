@@ -65,8 +65,8 @@ class RuntimeInstance(UUIDPrimaryKeyMixin, Base):
         ForeignKey("model_bindings.id", ondelete="RESTRICT"), nullable=False
     )
     release_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
-    model_node_id: Mapped[UUID] = mapped_column(
-        ForeignKey("model_nodes.id", ondelete="RESTRICT"), nullable=False
+    model_node_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("model_nodes.id", ondelete="RESTRICT"), nullable=True
     )
     config_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     generation: Mapped[int] = mapped_column(Integer, nullable=False)
