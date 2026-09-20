@@ -57,7 +57,9 @@ def _make_verify_api_key(api_key_value: str):
 
 @pytest.fixture()
 def app(session):
-    application = create_app(checks={})
+    # ui_password=None: 仓库根 .env 现在配置了 UI_PASSWORD，测试要显式关掉
+    # 界面密码门，否则所有不带 X-UI-Password 的请求都会被拦成 401。
+    application = create_app(checks={}, settings=Settings(ui_password=None))
 
     def _get_db_override():
         yield session

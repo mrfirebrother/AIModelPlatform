@@ -3,10 +3,32 @@ import { mockApi } from "./mockApi";
 
 const API_BASE = import.meta.env.VITE_API_URL || "";
 
+/** 登录后存于 sessionStorage；每个请求随 X-UI-Password 头送出（后端校验）。 */
+function uiPassword(): string {
+  return sessionStorage.getItem("ui_password") || "";
+}
+
+function authHeaders(extra?: Record<string, string>): Record<string, string> {
+  return {
+    "X-API-Key": import.meta.env.VITE_API_KEY || "change-me",
+    "X-UI-Password": uiPassword(),
+    ...(extra || {}),
+  };
+}
+
+/** 401 = 密码失效/未登录：清除会话并通知界面退回登录页。 */
+function handleAuth(res: Response): void {
+  if (res.status === 401) {
+    sessionStorage.removeItem("ui_password");
+    window.dispatchEvent(new Event("ui-auth-required"));
+  }
+}
+
 async function fetchJson<T>(path: string): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
-    headers: { "X-API-Key": import.meta.env.VITE_API_KEY || "change-me" },
+    headers: authHeaders(),
   });
+  handleAuth(res);
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
   return res.json();
 }
@@ -14,12 +36,10 @@ async function fetchJson<T>(path: string): Promise<T> {
 async function postJson<T>(path: string, body?: unknown): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-API-Key": import.meta.env.VITE_API_KEY || "change-me",
-    },
+    headers: authHeaders({ "Content-Type": "application/json" }),
     body: body ? JSON.stringify(body) : undefined,
   });
+  handleAuth(res);
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
   return res.json();
 }
@@ -27,8 +47,9 @@ async function postJson<T>(path: string, body?: unknown): Promise<T> {
 async function deleteJson<T>(path: string): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     method: "DELETE",
-    headers: { "X-API-Key": import.meta.env.VITE_API_KEY || "change-me" },
+    headers: authHeaders(),
   });
+  handleAuth(res);
   if (!res.ok) {
     let detail = res.statusText;
     try {
@@ -51,6 +72,7 @@ async function uploadFile<T>(
     const xhr = new XMLHttpRequest();
     xhr.open("POST", `${API_BASE}${path}`);
     xhr.setRequestHeader("X-API-Key", import.meta.env.VITE_API_KEY || "change-me");
+    xhr.setRequestHeader("X-UI-Password", uiPassword());
 
     xhr.upload.addEventListener("progress", (e) => {
       if (e.lengthComputable && onProgress) {
@@ -62,6 +84,10 @@ async function uploadFile<T>(
       if (xhr.status >= 200 && xhr.status < 300) {
         resolve(JSON.parse(xhr.responseText));
       } else {
+        if (xhr.status === 401) {
+          sessionStorage.removeItem("ui_password");
+          window.dispatchEvent(new Event("ui-auth-required"));
+        }
         let detail = xhr.statusText;
         try {
           const body = JSON.parse(xhr.responseText);
@@ -134,7 +160,7 @@ const realApi: ApiClient = {
   deleteDataset: (id) => deleteJson<any>(`/api/datasets/${id}`).then(() => undefined),
   getTrainingTasks: () => fetchJson<any>("/api/training/tasks").then((r) => camelizeKeys(r.tasks ?? r)),
   createTrainingTask: (data) => postJson("/api/training/tasks", data),
-  deleteTrainingTask: (id) => fetch(`${API_BASE}/api/training/tasks/${id}`, { method: "DELETE", headers: { "X-API-Key": import.meta.env.VITE_API_KEY || "change-me" } }).then(() => {}),
+  deleteTrainingTask: (id) => fetch(`${API_BASE}/api/training/tasks/${id}`, { method: "DELETE", headers: authHeaders() }).then((res) => { handleAuth(res); }),
   cancelTrainingTask: (id) => postJson(`/api/training/tasks/${id}/cancel`, {}),
   getTrainingLogs: (taskId: string) => fetchJson<any>(`/api/training/${taskId}/logs`).then(camelizeKeys),
   getTrainingMetrics: (taskId: string) => fetchJson<any>(`/api/training/${taskId}/metrics`).then(camelizeKeys),
@@ -195,7 +221,8 @@ const realApi: ApiClient = {
       const xhr = new XMLHttpRequest();
       xhr.open("POST", `${API_BASE}/api/evaluations/${evaluationId}/infer`);
       xhr.setRequestHeader("X-API-Key", import.meta.env.VITE_API_KEY || "change-me");
-      xhr.onload = () => { if (xhr.status >= 200 && xhr.status < 300) resolve(JSON.parse(xhr.responseText)); else reject(new Error(`${xhr.status}: ${xhr.statusText}`)); };
+      xhr.setRequestHeader("X-UI-Password", uiPassword());
+      xhr.onload = () => { if (xhr.status >= 200 && xhr.status < 300) resolve(JSON.parse(xhr.responseText)); else { if (xhr.status === 401) { sessionStorage.removeItem("ui_password"); window.dispatchEvent(new Event("ui-auth-required")); } reject(new Error(`${xhr.status}: ${xhr.statusText}`)); } };
       xhr.onerror = () => reject(new Error("Network error"));
       xhr.send(fd);
     });
@@ -207,7 +234,8 @@ const realApi: ApiClient = {
       const xhr = new XMLHttpRequest();
       xhr.open("POST", `${API_BASE}/api/models/${modelCode}/infer`);
       xhr.setRequestHeader("X-API-Key", import.meta.env.VITE_API_KEY || "change-me");
-      xhr.onload = () => { if (xhr.status >= 200 && xhr.status < 300) resolve(JSON.parse(xhr.responseText)); else { let detail = xhr.statusText; try { detail = JSON.parse(xhr.responseText).detail || detail; } catch {} reject(new Error(`${xhr.status}: ${detail}`)); } };
+      xhr.setRequestHeader("X-UI-Password", uiPassword());
+      xhr.onload = () => { if (xhr.status >= 200 && xhr.status < 300) resolve(JSON.parse(xhr.responseText)); else { if (xhr.status === 401) { sessionStorage.removeItem("ui_password"); window.dispatchEvent(new Event("ui-auth-required")); } let detail = xhr.statusText; try { detail = JSON.parse(xhr.responseText).detail || detail; } catch {} reject(new Error(`${xhr.status}: ${detail}`)); } };
       xhr.onerror = () => reject(new Error("Network error"));
       xhr.send(fd);
     });

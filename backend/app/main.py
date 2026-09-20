@@ -39,6 +39,26 @@ def create_app(
 
     app = FastAPI(title="AI Model Platform API", version="0.1.0")
 
+    ui_password = resolved_settings.ui_password
+
+    @app.middleware("http")
+    async def ui_password_gate(request, call_next):
+        """单一密码鉴权：/api 请求需带 X-UI-Password（与 UI_PASSWORD 一致）。
+
+        豁免：/health*（看门狗与部署脚本探活）和 /api/v1*（外部服务 API，
+        由 X-API-Key 单独保护）。未配置 UI_PASSWORD 时不启用。
+        """
+        path = request.url.path
+        if ui_password and not path.startswith(("/health", "/api/v1")):
+            if request.headers.get("X-UI-Password", "") != ui_password:
+                from fastapi.responses import JSONResponse
+
+                return JSONResponse(
+                    status_code=401,
+                    content={"detail": "Invalid or missing UI password"},
+                )
+        return await call_next(request)
+
     from .api.routes import (
         alerts_router,
         backup_router,

@@ -42,6 +42,9 @@ class Settings(BaseSettings):
         default="change-me",
         validation_alias="PLATFORM_API_KEY",
     )
+    #: UI 单一密码（.env 的 UI_PASSWORD）。None/空 = 不启用界面鉴权
+    #: （测试与纯内网场景）；设置了则所有 /api 请求需带 X-UI-Password 头。
+    ui_password: str | None = Field(default=None, validation_alias="UI_PASSWORD")
 
     max_inference_input_bytes: int = Field(
         default=10 * 1024 * 1024,
