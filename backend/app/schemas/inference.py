@@ -30,14 +30,19 @@ class InferenceItem(BaseModel):
 class InferenceRequest(BaseModel):
     modelBindingId: UUID | None = Field(default=None)
     modelNodeId: UUID | None = Field(default=None)
+    #: 直接按模型编号（如 M006）推理——训练完成的模型无需发布即可对外调用
+    modelCode: str | None = Field(default=None)
     input: dict[str, Any] = Field(...)
 
     @model_validator(mode="after")
     def validate_target(self) -> InferenceRequest:
-        if self.modelBindingId is None and self.modelNodeId is None:
-            raise ValueError("Either modelBindingId or modelNodeId must be provided")
-        if self.modelBindingId is not None and self.modelNodeId is not None:
-            raise ValueError("Only one of modelBindingId or modelNodeId may be provided")
+        provided = sum(
+            1 for v in (self.modelBindingId, self.modelNodeId, self.modelCode) if v is not None
+        )
+        if provided == 0:
+            raise ValueError("One of modelBindingId, modelNodeId or modelCode must be provided")
+        if provided > 1:
+            raise ValueError("Only one of modelBindingId, modelNodeId or modelCode may be provided")
         if "image_base64" not in self.input:
             raise ValueError("input must contain image_base64")
         return self

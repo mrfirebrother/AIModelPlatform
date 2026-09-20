@@ -42,6 +42,30 @@ export default function ModelDetailPage() {
           <div className="detail-row"><span>{"创建时间"}</span><b>{new Date(node.createdAt).toLocaleString("zh-CN")}</b></div>
         </div>
       </div>
+
+      <div className="card" style={{ marginTop: 14 }}>
+        <div className="card-head">
+          <div>
+            <div className="card-title">对外调用</div>
+            <div className="card-kicker">训练完成即可直接调用，无需发布</div>
+          </div>
+        </div>
+        <div className="card-body">
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8 }}>
+            请求头需带 <code>X-API-Key</code>；请求体传入 <code>modelCode</code> 与 base64 图片（分割模型返回掩码多边形 mask）。
+          </div>
+          <pre style={{ fontSize: 12, background: "#f6f9fc", border: "1px solid #d3e2ec", borderRadius: 4, padding: 12, overflowX: "auto", whiteSpace: "pre-wrap" }}>
+{`POST /api/v1/infer
+{
+  "modelCode": "${node.code}",
+  "input": {
+    "image_base64": "<base64>",
+    "image_format": "jpg"
+  }
+}`}
+          </pre>
+        </div>
+      </div>
     </div>
   );
 }

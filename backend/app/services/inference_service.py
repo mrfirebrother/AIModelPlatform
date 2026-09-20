@@ -164,6 +164,59 @@ class InferenceService:
             generation=instance.generation,
         )
 
+    def run_inference_by_code(
+        self,
+        model_code: str,
+        image_base64: str,
+        image_format: str,
+    ) -> InferenceResponse:
+        """Direct inference by model code (e.g. M006) - no binding/release needed.
+
+        The model must exist in the registry; trained models work immediately.
+        """
+        start_time = time.time()
+
+        model = (
+            self._session.query(ModelNode)
+            .filter(ModelNode.code == model_code)
+            .first()
+        )
+        if model is None:
+            raise ValueError(f"Model code {model_code} not found")
+
+        image_bytes = self.validate_image(image_base64, image_format)
+
+        engine = _get_engine()
+        if model.artifact_path not in engine.list_models():
+            engine.load_model(model.artifact_path)
+        detections = engine.predict(
+            model.artifact_path,
+            image_bytes,
+            image_format,
+            confidence_threshold=0.25,
+        )
+
+        latency_ms = (time.time() - start_time) * 1000
+        return InferenceResponse(
+            results=[
+                InferenceResult(
+                    detections=[
+                        InferenceDetection(
+                            class_name=d.class_name,
+                            confidence=d.confidence,
+                            bbox=d.bbox,
+                            class_id=d.class_id,
+                            mask=d.mask,
+                        )
+                        for d in detections
+                    ],
+                    modelNodeId=model.id,
+                )
+            ],
+            latency=latency_ms,
+            modelNodeId=model.id,
+        )
+
     def run_batch_inference(self, items: list[InferenceItem]) -> InferenceBatchResponse:
         start_time = time.time()
         results: list[InferenceResult] = []

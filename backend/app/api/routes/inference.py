@@ -46,6 +46,12 @@ def infer_single(
                 image_base64=image_base64,
                 image_format=image_format,
             )
+        elif payload.modelCode is not None:
+            resp = service.run_inference_by_code(
+                model_code=payload.modelCode,
+                image_base64=image_base64,
+                image_format=image_format,
+            )
         else:
             binding = service.resolve_binding(model_node_id=payload.modelNodeId)
             if binding is None:
