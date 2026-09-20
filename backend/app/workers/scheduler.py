@@ -38,9 +38,73 @@ def sweep_pending_evaluations() -> str:
         return f"dispatched {dispatched} pending evaluation(s)"
 
 
+#: 中断后最多自动重试次数（首次运行 + MAX_AUTO_RETRIES 次重试；耗尽则永久失败）
+MAX_AUTO_RETRIES = 2
+
+
+def _recover_or_fail_interrupted_attempt(session: Session, attempt: TrainingAttempt) -> str:
+    """Heartbeat lost (worker killed / machine reboot): recover instead of failing.
+
+    Releases the attempt's orphan GPU lease, closes the old attempt, re-queues
+    the task and re-dispatches run_training. After MAX_AUTO_RETRIES the task is
+    failed permanently instead of retrying forever.
+    """
+    from sqlalchemy import func as _func
+
+    from backend.app.workers.train_worker import run_training
+
+    task = session.get(TrainingTask, attempt.task_id, with_for_update=True)
+    if task is None or task.status in ("completed", "cancelled"):
+        expire_attempt(session, attempt.id)
+        return "task terminal"
+
+    attempt = session.get(TrainingAttempt, attempt.id, with_for_update=True)
+    if attempt.status not in ("running", "recovering"):
+        return "attempt not active"
+
+    total_attempts = session.scalar(
+        select(_func.count())
+        .select_from(TrainingAttempt)
+        .where(TrainingAttempt.task_id == task.id)
+    ) or 0
+    if total_attempts > MAX_AUTO_RETRIES:
+        expire_attempt(session, attempt.id)
+        task.status = "failed"
+        task.failure_reason = f"自动重试 {MAX_AUTO_RETRIES} 次后仍中断，放弃自动恢复"
+        session.flush()
+        return "retry budget exhausted"
+
+    # 释放该 attempt 名下的孤儿 GPU 租约（否则重试会因无可用显存立即失败）
+    orphan_leases = list(
+        session.execute(
+            select(GPUResourceLease).where(
+                GPUResourceLease.owner_type == "training_attempt",
+                GPUResourceLease.owner_id == attempt.id,
+                GPUResourceLease.status == "active",
+            )
+        ).scalars().all()
+    )
+    for gpu_lease in orphan_leases:
+        expire_gpu_lease(session, gpu_lease.id)
+
+    attempt.status = "failed"
+    attempt.last_error = "Worker interrupted (lease expired); auto-rescheduling"
+    attempt.finished_at = datetime.now(timezone.utc)
+    task.status = "queued"
+    task.failure_reason = None
+    session.flush()
+
+    try:
+        run_training.delay(str(task.id))
+    except Exception:
+        # 无 broker 时（测试环境）任务保持 queued，由 sweep_queued_tasks 兜底
+        logger.exception("Failed to re-dispatch task %s; sweep will retry", task.id)
+    return "rescheduled"
+
+
 @celery_app.task(name="platform.scheduler.reconcile_leases")
 def reconcile_leases() -> str:
-    """Find expired leases and fail the associated training attempts.
+    """Find expired leases and recover (or fail) the associated training attempts.
 
     Handles both TrainingAttempt leases and GPUResourceLease records.
     """
@@ -56,13 +120,10 @@ def reconcile_leases() -> str:
         count = 0
         for attempt in expired_attempts:
             try:
-                expire_attempt(session, attempt.id)
-                task = session.get(TrainingTask, attempt.task_id)
-                if task is not None and task.status not in ("completed", "cancelled", "failed"):
-                    task.status = "failed"
+                _recover_or_fail_interrupted_attempt(session, attempt)
                 count += 1
             except Exception:
-                logger.exception("Failed to expire attempt %s", attempt.id)
+                logger.exception("Failed to recover attempt %s", attempt.id)
 
         for gpu_lease in expired_gpu_leases:
             try:
