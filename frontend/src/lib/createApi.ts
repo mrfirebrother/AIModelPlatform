@@ -3,9 +3,9 @@ import { mockApi } from "./mockApi";
 
 const API_BASE = import.meta.env.VITE_API_URL || "";
 
-/** 登录后存于 sessionStorage；每个请求随 X-UI-Password 头送出（后端校验）。 */
+/** 登录后存于 localStorage（跨标签页共享）；每个请求随 X-UI-Password 头送出。 */
 function uiPassword(): string {
-  return sessionStorage.getItem("ui_password") || "";
+  return localStorage.getItem("ui_password") || "";
 }
 
 /** 供各页面原始 fetch/XHR 复用：同时带 API key 与界面密码头。 */
@@ -20,7 +20,7 @@ export function authHeaders(extra?: Record<string, string>): Record<string, stri
 /** 401 = 密码失效/未登录：清除会话并通知界面退回登录页。 */
 function handleAuth(res: Response): void {
   if (res.status === 401) {
-    sessionStorage.removeItem("ui_password");
+    localStorage.removeItem("ui_password");
     window.dispatchEvent(new Event("ui-auth-required"));
   }
 }
@@ -86,7 +86,7 @@ async function uploadFile<T>(
         resolve(JSON.parse(xhr.responseText));
       } else {
         if (xhr.status === 401) {
-          sessionStorage.removeItem("ui_password");
+          localStorage.removeItem("ui_password");
           window.dispatchEvent(new Event("ui-auth-required"));
         }
         let detail = xhr.statusText;
@@ -223,7 +223,7 @@ const realApi: ApiClient = {
       xhr.open("POST", `${API_BASE}/api/evaluations/${evaluationId}/infer`);
       xhr.setRequestHeader("X-API-Key", import.meta.env.VITE_API_KEY || "change-me");
       xhr.setRequestHeader("X-UI-Password", uiPassword());
-      xhr.onload = () => { if (xhr.status >= 200 && xhr.status < 300) resolve(JSON.parse(xhr.responseText)); else { if (xhr.status === 401) { sessionStorage.removeItem("ui_password"); window.dispatchEvent(new Event("ui-auth-required")); } reject(new Error(`${xhr.status}: ${xhr.statusText}`)); } };
+      xhr.onload = () => { if (xhr.status >= 200 && xhr.status < 300) resolve(JSON.parse(xhr.responseText)); else { if (xhr.status === 401) { localStorage.removeItem("ui_password"); window.dispatchEvent(new Event("ui-auth-required")); } reject(new Error(`${xhr.status}: ${xhr.statusText}`)); } };
       xhr.onerror = () => reject(new Error("Network error"));
       xhr.send(fd);
     });
@@ -236,7 +236,7 @@ const realApi: ApiClient = {
       xhr.open("POST", `${API_BASE}/api/models/${modelCode}/infer`);
       xhr.setRequestHeader("X-API-Key", import.meta.env.VITE_API_KEY || "change-me");
       xhr.setRequestHeader("X-UI-Password", uiPassword());
-      xhr.onload = () => { if (xhr.status >= 200 && xhr.status < 300) resolve(JSON.parse(xhr.responseText)); else { if (xhr.status === 401) { sessionStorage.removeItem("ui_password"); window.dispatchEvent(new Event("ui-auth-required")); } let detail = xhr.statusText; try { detail = JSON.parse(xhr.responseText).detail || detail; } catch {} reject(new Error(`${xhr.status}: ${detail}`)); } };
+      xhr.onload = () => { if (xhr.status >= 200 && xhr.status < 300) resolve(JSON.parse(xhr.responseText)); else { if (xhr.status === 401) { localStorage.removeItem("ui_password"); window.dispatchEvent(new Event("ui-auth-required")); } let detail = xhr.statusText; try { detail = JSON.parse(xhr.responseText).detail || detail; } catch {} reject(new Error(`${xhr.status}: ${detail}`)); } };
       xhr.onerror = () => reject(new Error("Network error"));
       xhr.send(fd);
     });

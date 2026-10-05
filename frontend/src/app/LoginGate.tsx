@@ -1,9 +1,9 @@
 ﻿import { useEffect, useState } from "react";
 import { createApi } from "../lib/createApi";
 
-/** 单一密码登录门：密码存 sessionStorage，通过后每次请求带 X-UI-Password 头。 */
+/** 单一密码登录门：密码存 localStorage（跨标签页共享），通过后每次请求带 X-UI-Password 头。 */
 export default function LoginGate({ children }: { children: React.ReactNode }) {
-  const [authed, setAuthed] = useState(() => !!sessionStorage.getItem("ui_password"));
+  const [authed, setAuthed] = useState(() => !!localStorage.getItem("ui_password"));
   const [pw, setPw] = useState("");
   const [error, setError] = useState("");
   const [checking, setChecking] = useState(false);
@@ -19,12 +19,12 @@ export default function LoginGate({ children }: { children: React.ReactNode }) {
     if (checking) return;
     setChecking(true);
     setError("");
-    sessionStorage.setItem("ui_password", pw);
+    localStorage.setItem("ui_password", pw);
     try {
       await createApi().getModelNodes();
       setAuthed(true);
     } catch {
-      sessionStorage.removeItem("ui_password");
+      localStorage.removeItem("ui_password");
       setError("密码错误");
     } finally {
       setChecking(false);
