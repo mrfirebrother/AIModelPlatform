@@ -1,4 +1,5 @@
 ﻿import { useCallback, useEffect, useRef, useState } from "react";
+import { authHeaders } from "../../lib/createApi";
 
 type BBox = { classId: number; bbox: [number, number, number, number] };
 type Polygon = { classId: number; polygon: [number, number][] };
@@ -15,7 +16,7 @@ export default function AnnotateCanvas({ imageUrl, mode, onSave, classId, datase
   useEffect(() => {
     if (!imageUrl) { setBlobUrl(null); imgRef.current = null; polyRef.current = []; setPoly([]); return; }
     const apiKey = (import.meta as any).env?.VITE_API_KEY || "change-me";
-    fetch(imageUrl, { headers: { "X-API-Key": apiKey } })
+    fetch(imageUrl, { headers: authHeaders() })
       .then((r) => r.blob())
       .then((b) => {
         const url = URL.createObjectURL(b);
@@ -36,7 +37,7 @@ export default function AnnotateCanvas({ imageUrl, mode, onSave, classId, datase
           // Load saved annotations
           if (datasetId && imageId) {
             fetch(`/api/datasets/${datasetId}/annotations/${imageId}`, {
-              headers: { "X-API-Key": apiKey },
+              headers: authHeaders(),
             }).then((r) => r.json()).then((data) => {
               if (data.annotations && data.annotations.length > 0 && c && imgRef.current) {
                 const ctx2 = c.getContext("2d");

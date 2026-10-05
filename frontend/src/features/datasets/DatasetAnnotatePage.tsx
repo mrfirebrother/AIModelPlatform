@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { createApi } from "../../lib/createApi";
 import { useToast } from "../../lib/toast";
 import AnnotateCanvas from "./AnnotateCanvas";
+import { authHeaders } from "../../lib/createApi";
 
 export default function DatasetAnnotatePage() {
   const { id } = useParams();
@@ -23,15 +24,15 @@ export default function DatasetAnnotatePage() {
   useEffect(() => {
     if (!id) return;
     Promise.all([
-      fetch(`/api/datasets/${id}/image_list`, { headers: { "X-API-Key": import.meta.env.VITE_API_KEY || "change-me" } }).then((r) => r.json()).catch(() => ({ images: [] })),
-      fetch(`/api/datasets/${id}`, { headers: { "X-API-Key": import.meta.env.VITE_API_KEY || "change-me" } }).then((r) => r.json()).catch(() => ({})),
+      fetch(`/api/datasets/${id}/image_list`, { headers: authHeaders() }).then((r) => r.json()).catch(() => ({ images: [] })),
+      fetch(`/api/datasets/${id}`, { headers: authHeaders() }).then((r) => r.json()).catch(() => ({})),
     ]).then(([imgData, dsData]) => {
       if (imgData.images && imgData.images.length > 0) {
         setImages(imgData.images);
         setCurrent(0);
       }
       // Load class names from label schema (always try, not only when snapshot exists)
-      fetch(`/api/datasets/${id}/label_classes`, { headers: { "X-API-Key": import.meta.env.VITE_API_KEY || "change-me" } })
+      fetch(`/api/datasets/${id}/label_classes`, { headers: authHeaders() })
         .then((r) => r.json())
         .then((data) => {
           if (data.classes && data.classes.length > 0) {
@@ -51,7 +52,7 @@ export default function DatasetAnnotatePage() {
     try {
       const res = await fetch(`/api/datasets/${id}/images`, {
         method: "POST",
-        headers: { "X-API-Key": import.meta.env.VITE_API_KEY || "change-me" },
+        headers: authHeaders(),
         body: fd,
       });
       if (!res.ok) throw new Error(await res.text());
@@ -82,7 +83,7 @@ export default function DatasetAnnotatePage() {
     try {
       await fetch(`/api/datasets/${id}/snapshot`, {
         method: "POST",
-        headers: { "X-API-Key": import.meta.env.VITE_API_KEY || "change-me" },
+        headers: authHeaders(),
       });
       toast.success("快照生成中，后台处理");
       setTimeout(() => navigate("/datasets"), 1000);
@@ -96,7 +97,7 @@ export default function DatasetAnnotatePage() {
     try {
       await fetch(`/api/datasets/${id}/annotations/${images[current]}`, {
         method: "DELETE",
-        headers: { "X-API-Key": import.meta.env.VITE_API_KEY || "change-me" },
+        headers: authHeaders(),
       });
       toast.success("已清空");
       setRefreshKey((k) => k + 1);

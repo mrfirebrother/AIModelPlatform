@@ -61,6 +61,7 @@ def create_app(
 
     from .api.routes import (
         alerts_router,
+        annotate_router,
         backup_router,
         bindings_router,
         datasets_router,
@@ -79,6 +80,7 @@ def create_app(
     )
     from .observability.health_probes import router as probes_router
 
+    app.include_router(annotate_router)
     app.include_router(alerts_router)
     app.include_router(health_router)
     app.include_router(probes_router)

@@ -11,6 +11,7 @@ import ReleasesPage from "../features/releases/ReleasesPage";
 import ResourcesPage from "../features/resources/ResourcesPage";
 import OperationsPage from "../features/operations/OperationsPage";
 import ApiTestPage from "../features/api/ApiTestPage";
+import ToolsPage from "../features/tools/ToolsPage";
 
 const navItems = [
   { to: "/dashboard", label: "总览", icon: "▦" },
@@ -18,6 +19,7 @@ const navItems = [
   { to: "/datasets", label: "数据集", icon: "◉" },
   { to: "/training", label: "训练任务", icon: "▶" },
   { to: "/evaluations", label: "模型评估", icon: "◆" },
+  { to: "/tools", label: "标注工具", icon: "✎" },
 ];
 
 const navItems2 = [
@@ -34,6 +36,7 @@ const pageTitles: Record<string, string> = {
   "/evaluations": "模型评估",
   "/releases": "发布管理",
   "/resources": "资源控制",
+  "/tools": "标注工具",
   "/api-test": "API 接口",
   "/datasets/create": "新建数据集",
   "/operations": "运维管理",
@@ -110,6 +113,7 @@ export function AppRoutes() {
             <Route path="/training" element={<TrainingPage />} />
             <Route path="/training/create" element={<TrainingCreatePage />} />
             <Route path="/evaluations" element={<EvaluationsPage />} />
+            <Route path="/tools" element={<ToolsPage />} />
             <Route path="/releases" element={<ReleasesPage />} />
             <Route path="/resources" element={<ResourcesPage />} />
             <Route path="/api-test" element={<ApiTestPage />} />

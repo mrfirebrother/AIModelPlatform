@@ -1,6 +1,7 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { createApi } from "../../lib/createApi";
 import type { ModelNode } from "../../lib/api";
+import { authHeaders } from "../../lib/createApi";
 
 interface Detection { class_name: string; confidence: number; bbox: number[]; class_id: number; }
 interface InferResult { model_code: string; model_name: string; detections: Detection[]; latency_ms: number; image_width: number; image_height: number; overlay_image?: string | null; }
@@ -22,7 +23,7 @@ export default function ApiTestPage() {
     setLoading(true); setError(null); setResult(null);
     try {
       const fd = new FormData(); fd.append("file", file);
-      const res = await fetch(`/api/models/${selectedCode}/infer`, { method: "POST", headers: { "X-API-Key": import.meta.env.VITE_API_KEY || "change-me" }, body: fd });
+      const res = await fetch(`/api/models/${selectedCode}/infer`, { method: "POST", headers: authHeaders(), body: fd });
       if (!res.ok) { const body = await res.json().catch(() => ({})); throw new Error(body.detail || `${res.status} ${res.statusText}`); }
       setResult(await res.json());
     } catch (err) { setError((err as Error).message); }

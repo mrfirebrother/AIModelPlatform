@@ -1,6 +1,7 @@
 ﻿import { useEffect, useMemo, useState } from "react";
 import { createApi } from "../../lib/createApi";
 import LoadingSpinner from "../../lib/LoadingSpinner";
+import { authHeaders } from "../../lib/createApi";
 
 interface OperationLogEntry { id: string; operationType: string; actor: string | null; status: string; summaryJson: Record<string, unknown>; errorSummary: string | null; createdAt: string; }
 interface OperationLogsResponse { items: OperationLogEntry[]; total: number; }
@@ -21,8 +22,8 @@ export default function OperationsPage() {
   const [logPage, setLogPage] = useState(0);
   const pageSize = 10;
 
-  useEffect(() => { fetch("/api/operations/status", { headers: { "X-API-Key": import.meta.env.VITE_API_KEY || "change-me" } }).then((r) => r.json()).then((d: OperationStatusResponse) => setStatus(d)).catch(() => {}); }, []);
-  useEffect(() => { setLoading(true); fetch(`/api/operations/logs?skip=${logPage * pageSize}&limit=${pageSize}`, { headers: { "X-API-Key": import.meta.env.VITE_API_KEY || "change-me" } }).then((r) => r.json()).then((d: OperationLogsResponse) => { setLogs(d.items); setLogsTotal(d.total); }).catch(() => {}).finally(() => setLoading(false)); }, [logPage]);
+  useEffect(() => { fetch("/api/operations/status", { headers: authHeaders() }).then((r) => r.json()).then((d: OperationStatusResponse) => setStatus(d)).catch(() => {}); }, []);
+  useEffect(() => { setLoading(true); fetch(`/api/operations/logs?skip=${logPage * pageSize}&limit=${pageSize}`, { headers: authHeaders() }).then((r) => r.json()).then((d: OperationLogsResponse) => { setLogs(d.items); setLogsTotal(d.total); }).catch(() => {}).finally(() => setLoading(false)); }, [logPage]);
 
   const checkItems = [{ key: "postgres", label: "PostgreSQL", icon: "⛁" }, { key: "redis", label: "Redis", icon: "⚡" }, { key: "gpu", label: "GPU", icon: "▣" }, { key: "worker", label: "Worker", icon: "⚙" }];
 

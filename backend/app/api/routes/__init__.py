@@ -1,6 +1,7 @@
 ﻿from __future__ import annotations
 
 from .alerts import router as alerts_router
+from .annotate import router as annotate_router
 from .backup import router as backup_router
 from .health import router as health_router
 from .models import router as models_router
@@ -19,6 +20,7 @@ from .operations import router as operations_router
 
 __all__ = [
     "alerts_router",
+    "annotate_router",
     "backup_router",
     "health_router",
     "models_router",

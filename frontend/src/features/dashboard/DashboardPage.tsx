@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { createApi } from "../../lib/createApi";
 import { useLiveEpoch } from "../../lib/LiveEpoch";
 import type { ModelNode, TrainingTask, Evaluation } from "../../lib/api";
+import { authHeaders } from "../../lib/createApi";
 
 function fmtTime(iso?: string): string {
   if (!iso) return "—";
@@ -49,7 +50,7 @@ export default function DashboardPage() {
       api.getModelNodes().catch(() => []),
       api.getTrainingTasks().catch(() => []),
       api.getEvaluations().catch(() => []),
-      fetch("/api/operations/logs?limit=5", { headers: { "X-API-Key": import.meta.env.VITE_API_KEY || "change-me" } }).then((r) => r.json()).catch(() => ({ items: [] })),
+      fetch("/api/operations/logs?limit=5", { headers: authHeaders() }).then((r) => r.json()).catch(() => ({ items: [] })),
     ]).then(([m, t, e, l]) => { setModels(m); setTasks(t); setEvals(e); setLogs(l.items || []); });
   }, [api]);
 
