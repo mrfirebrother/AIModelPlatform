@@ -1,7 +1,7 @@
 ﻿"use strict";
 
 const API_KEY = "change-me";
-function uiPassword() { return sessionStorage.getItem("ui_password") || ""; }
+function uiPassword() { return localStorage.getItem("ui_password") || sessionStorage.getItem("ui_password") || ""; }
 function apiHeaders(extra) {
   return Object.assign({
     "X-API-Key": API_KEY,
@@ -10,18 +10,19 @@ function apiHeaders(extra) {
 }
 async function apiFetch(path, options) {
   const opts = options || {};
-  const res = await apiFetch(path, Object.assign({}, opts, { headers: apiHeaders(opts.headers || {}) }));
+  const res = await fetch(path, Object.assign({}, opts, { headers: apiHeaders(opts.headers || {}) }));
   if (res.status === 401) { window.location.href = "/"; throw new Error("unauthorized"); }
   return res;
 }
 
-const ROW = 34;
-const folderInput = document.querySelector("#folder");
+const ROW = 36;
 const statsEl = document.querySelector("#stats");
 const listEl = document.querySelector("#list");
 const canvas = document.querySelector("#view");
 const emptyEl = document.querySelector("#empty");
-const metaEl = document.querySelector("#meta");
+const captionEl = document.querySelector("#caption");
+const classSelect = document.querySelector("#class-select");
+const classInput = document.querySelector("#class-input");
 const statusEl = document.querySelector("#status");
 const boxListEl = document.querySelector("#boxes");
 const ctx = canvas.getContext("2d");
@@ -42,7 +43,77 @@ const state = {
   tool: null,
   drag: null,
   ready: false,
+  classes: ["object"],
+  cls: 0, // 当前类别：新画的框、提议的框都归它
 };
+
+// 不同类别不同颜色画框
+const CLASS_COLORS = ["#1d6fbf", "#d1495b", "#2a9d48", "#e08a00", "#7d3fc4", "#0e9b9b", "#c43fa0", "#677d00", "#546e7a", "#b45a30"];
+function classColor(index) {
+  if (!Number.isInteger(index) || index < 0) return CLASS_COLORS[0];
+  return CLASS_COLORS[index % CLASS_COLORS.length];
+}
+function className(index) {
+  if (Number.isInteger(index) && index >= 0 && index < state.classes.length) return state.classes[index];
+  return state.classes[0] || "object";
+}
+function renderClasses() {
+  if (state.cls >= state.classes.length) state.cls = 0;
+  classSelect.innerHTML = "";
+  state.classes.forEach((name, index) => {
+    const option = document.createElement("option");
+    option.value = String(index);
+    option.textContent = `${index + 1} · ${name}`;
+    classSelect.appendChild(option);
+  });
+  classSelect.value = String(state.cls);
+}
+async function loadClasses() {
+  // 文件夹自带的 classes.txt 为准；没有才用占位
+  try {
+    const response = await apiFetch("/api/annotate/classes");
+    const payload = await response.json();
+    state.classes = (response.ok && Array.isArray(payload.classes) && payload.classes.length)
+      ? payload.classes
+      : ["object"];
+  } catch {
+    state.classes = ["object"];
+  }
+  if (state.cls >= state.classes.length) state.cls = 0;
+  renderClasses();
+}
+async function saveClasses(names) {
+  const response = await apiFetch("/api/annotate/classes", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ classes: names }),
+  });
+  const payload = await response.json();
+  if (!response.ok) {
+    setStatus(payload.detail || "类别保存失败", true);
+    return false;
+  }
+  state.classes = payload.classes;
+  if (state.cls >= state.classes.length) state.cls = state.classes.length - 1;
+  renderClasses();
+  renderBoxes();
+  draw();
+  return true;
+}
+function setActiveClass(index, applyToSelected = true) {
+  if (!state.classes.length) return;
+  state.cls = Math.min(Math.max(index, 0), state.classes.length - 1);
+  renderClasses();
+  // 数字键一切换就把选中框同步改类，单键完成“定类+改类”
+  if (applyToSelected && state.selected >= 0 && state.boxes[state.selected]) {
+    pushUndo();
+    state.boxes[state.selected].cls = state.cls;
+    commit();
+  } else {
+    draw();
+    renderBoxes();
+  }
+}
 
 const spacer = document.createElement("div");
 const windowEl = document.createElement("div");
@@ -79,7 +150,7 @@ function renderStats() {
   const total = state.images.length;
   const seen = state.images.filter((image) => image.count !== null).length;
   const here = state.index >= 0 ? state.index + 1 : 0;
-  statsEl.textContent = total ? `${String(here).padStart(3, "0")} / ${total}    已看 ${seen}` : "未打开";
+  statsEl.textContent = total ? `${String(here).padStart(3, "0")} / ${total} · 已看 ${seen}` : "";
 }
 
 function renderList() {
@@ -96,6 +167,8 @@ function renderList() {
     button.type = "button";
     button.className = `row${imageIndex === state.index ? " on" : ""}`;
     button.dataset.i = String(imageIndex);
+    button.title = image.rel;
+    if (imageIndex === state.index) button.setAttribute("aria-current", "true");
     const dot = document.createElement("i");
     dot.className = "dot" + (image.count === null ? "" : image.count > 0 ? " seen" : " empty");
     const name = document.createElement("span");
@@ -126,7 +199,8 @@ function renderBoxes() {
     if (index === state.selected) item.className = "on";
     const label = document.createElement("button");
     label.type = "button";
-    label.textContent = `轮 ${index + 1}`;
+    label.textContent = `${className(box.cls)} ${index + 1}`;
+    item.style.borderLeftColor = classColor(box.cls);
     label.addEventListener("click", () => {
       state.selected = index;
       draw();
@@ -199,10 +273,11 @@ function draw() {
     const w = box.w * state.view.scale;
     const h = box.h * state.view.scale;
     const selected = index === state.selected;
-    ctx.strokeStyle = selected ? "#0b4f93" : "#1d6fbf";
+    const color = classColor(box.cls);
+    ctx.strokeStyle = selected ? "#0b4f93" : color;
     ctx.lineWidth = (selected ? 2.4 : 1.6) * (window.devicePixelRatio || 1);
     ctx.strokeRect(x, y, w, h);
-    ctx.fillStyle = selected ? "#0b4f93" : "#1d6fbf";
+    ctx.fillStyle = selected ? "#0b4f93" : color;
     ctx.font = `${12 * (window.devicePixelRatio || 1)}px Consolas, monospace`;
     ctx.fillText(String(index + 1), x + 4, y + 14 * (window.devicePixelRatio || 1));
     if (!selected) return;
@@ -281,6 +356,12 @@ let saveQueue = Promise.resolve();
 function commit() {
   const image = current();
   if (!image) return;
+  // 归一化类别：缺失、非整数、越界的全部落到合法 id，保证存的 YOLO 始终有效
+  state.boxes.forEach((box) => {
+    let cls = Number.isInteger(box.cls) ? box.cls : state.cls;
+    if (cls < 0 || cls >= state.classes.length) cls = 0;
+    box.cls = cls;
+  });
   image.count = state.boxes.length;
   state.seen = true;
   renderStats();
@@ -300,7 +381,7 @@ function commit() {
       setStatus(payload.error || "保存失败", true);
       return;
     }
-    if (current() && current().rel === rel) setStatus(`已保存 ${payload.count} 个轮子框`);
+    if (current() && current().rel === rel) setStatus(`已保存 ${payload.count} 个框`);
   }).catch(() => setStatus("保存失败", true));
 }
 
@@ -314,7 +395,9 @@ async function goto(index) {
   state.ready = false;
   state.boxes = [];
   const image = current();
-  metaEl.textContent = image.rel;
+  captionEl.textContent = `${state.index + 1}/${state.images.length} · ${image.rel}`;
+  captionEl.title = image.rel;
+  captionEl.classList.remove("hide");
   emptyEl.classList.add("hide");
   renderStats();
   renderList();
@@ -368,16 +451,16 @@ async function openFolder(path) {
     setStatus(payload.error || "打不开文件夹", true);
     return;
   }
-  folderInput.textContent = payload.root;
-  localStorage.setItem("axle-folder", payload.root);
   state.images = payload.images;
   state.index = -1;
   state.img = null;
   state.boxes = [];
+  await loadClasses();
   emptyEl.classList.toggle("hide", state.images.length > 0);
   renderStats();
   renderList();
   if (!state.images.length) {
+    captionEl.classList.add("hide");
     setStatus("这个文件夹里没有图片", true);
     return;
   }
@@ -389,7 +472,7 @@ async function openFolder(path) {
 async function propose() {
   const image = current();
   if (!image) return;
-  setStatus("正在找轮子…");
+  setStatus("正在找目标…");
   const response = await apiFetch(`/api/annotate/propose?rel=${encodeURIComponent(image.rel)}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -404,10 +487,10 @@ async function propose() {
     return;
   }
   pushUndo();
-  state.boxes = payload.boxes || [];
+  state.boxes = (payload.boxes || []).map((box) => ({ ...box, cls: state.cls }));
   state.selected = -1;
   if (!state.boxes.length) {
-    setStatus("没有找到够圆的轮子。把滑块拨向宽松，或直接画。", true);
+    setStatus("没有找到够圆的目标。把滑块拨向宽松，或直接画。", true);
     draw();
     renderBoxes();
     return;
@@ -416,57 +499,68 @@ async function propose() {
   setStatus(`提议了 ${state.boxes.length} 个框。错的删掉，漏的补上。`);
 }
 
-let browserPath = "";
-function renderBrowser() {
-  return apiFetch("/api/annotate/browse", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ path: browserPath }),
-  }).then((r) => r.json()).then((payload) => {
-    if (!payload || payload.error) { setStatus(payload.error || "浏览失败", true); return; }
-    browserPath = payload.path || "";
-    document.querySelector("#browser-path").textContent =
-      payload.at_root ? "驱动器" : (payload.path || "驱动器");
-    const list = document.querySelector("#browser-list");
-    list.innerHTML = "";
-    if (payload.parent) {
-      const item = document.createElement("div");
-      item.className = "browser-item";
-      item.textContent = ".. 上一级";
-      item.addEventListener("click", () => { browserPath = payload.parent; renderBrowser(); });
-      list.appendChild(item);
+const uploadInput = document.querySelector("#upload-input");
+const pickButton = document.querySelector("#pick");
+const emptyPickButton = document.querySelector("#empty-pick");
+function setPickBusy(text) {
+  // 上传进度直接显示在两个入口按钮上，不再弹中间窗体
+  [pickButton, emptyPickButton].forEach((button) => {
+    if (!button) return;
+    if (text === null) {
+      button.disabled = false;
+      button.textContent = button === pickButton ? "上传图片" : "选择本地文件夹上传";
+    } else {
+      button.disabled = true;
+      button.textContent = text;
     }
-    (payload.entries || []).forEach((entry) => {
-      const item = document.createElement("div");
-      item.className = "browser-item";
-      item.textContent = entry.name + "\\";
-      item.addEventListener("click", () => { browserPath = entry.path; renderBrowser(); });
-      list.appendChild(item);
-    });
-  }).catch(() => setStatus("浏览失败", true));
+  });
 }
-document.querySelector("#pick").addEventListener("click", async () => {
-  document.querySelector("#browser").classList.remove("hide");
-  browserPath = folderInput.textContent.trim();
-  renderBrowser();
-});
-document.querySelector("#browser-close").addEventListener("click", () =>
-  document.querySelector("#browser").classList.add("hide"));
-document.querySelector("#browser-choose").addEventListener("click", () => {
-  if (!browserPath) {
-    setStatus("请先进入一个目录，再选这个文件夹", true);
+function openFileDialog() {
+  // 允许重复选同一个目录：先清空，否则 change 不触发
+  uploadInput.value = "";
+  uploadInput.click();
+}
+pickButton.addEventListener("click", openFileDialog);
+if (emptyPickButton) emptyPickButton.addEventListener("click", openFileDialog);
+uploadInput.addEventListener("change", () => {
+  const files = Array.from(uploadInput.files || []).filter((f) =>
+    /\.(jpe?g|png|bmp|webp|tif|tiff)$/i.test(f.name));
+  if (!files.length) {
+    setStatus("这个文件夹里没有图片", true);
     return;
   }
-  document.querySelector("#browser").classList.add("hide");
-  folderInput.textContent = browserPath;
-  openFolder(browserPath);
+  uploadFiles(files);
 });
-
-// 回到驱动器：直接回到盘符列表（目录列表里的 ".. 上一级" 负责逐级回退）
-document.querySelector("#browser-parent").addEventListener("click", () => {
-  browserPath = "";
-  renderBrowser();
-});
+function uploadFiles(files) {
+  const form = new FormData();
+  files.forEach((f) => {
+    form.append("files", f, f.name);
+    form.append("paths", f.webkitRelativePath || f.name);
+  });
+  setPickBusy("正在上传 0%");
+  const xhr = new XMLHttpRequest();
+  xhr.open("POST", "/api/annotate/upload");
+  // FormData 的 Content-Type（含 boundary）由浏览器自己设，这里只补鉴权头
+  Object.entries(apiHeaders()).forEach(([k, v]) => xhr.setRequestHeader(k, v));
+  xhr.upload.onprogress = (event) => {
+    if (event.lengthComputable) setPickBusy(`正在上传 ${Math.round((event.loaded / event.total) * 100)}%`);
+  };
+  xhr.onload = () => {
+    setPickBusy(null);
+    let payload = {};
+    try { payload = JSON.parse(xhr.responseText); } catch { /* 非 JSON 按失败处理 */ }
+    if (xhr.status < 200 || xhr.status >= 300) {
+      setStatus(payload.detail || "上传失败", true);
+      return;
+    }
+    openFolder(payload.root);
+  };
+  xhr.onerror = () => {
+    setPickBusy(null);
+    setStatus("上传失败，请检查网络后重试", true);
+  };
+  xhr.send(form);
+}
 
 document.querySelector("#filter").addEventListener("click", (event) => {
   const button = event.target.closest("[data-filter]");
@@ -489,6 +583,46 @@ listEl.addEventListener("click", (event) => {
 });
 
 document.querySelector("#propose").addEventListener("click", propose);
+classSelect.addEventListener("change", () => setActiveClass(Number(classSelect.value), false));
+document.querySelector("#class-add").addEventListener("click", async () => {
+  const name = classInput.value.trim();
+  if (!name) {
+    setStatus("先填写新类别名", true);
+    return;
+  }
+  if (state.classes.includes(name)) {
+    // 已有：直接切过去，不重复加
+    setActiveClass(state.classes.indexOf(name), false);
+    classInput.value = "";
+    return;
+  }
+  if (await saveClasses([...state.classes, name])) {
+    state.cls = state.classes.length - 1;
+    renderClasses();
+    classInput.value = "";
+    setStatus(`当前类别：${name}`);
+  }
+});
+document.querySelector("#class-rename").addEventListener("click", async () => {
+  const name = classInput.value.trim();
+  if (!name) {
+    setStatus("先填写类别名", true);
+    return;
+  }
+  const at = state.classes.indexOf(name);
+  if (at >= 0 && at !== state.cls) {
+    // 改成已有的名：直接切过去，避免去重导致 id 错位
+    setActiveClass(at, false);
+    classInput.value = "";
+    return;
+  }
+  const names = [...state.classes];
+  names[state.cls] = name;
+  if (await saveClasses(names)) {
+    classInput.value = "";
+    setStatus(`当前类别：${name}`);
+  }
+});
 document.querySelector("#prev").addEventListener("click", () => step(-1));
 document.querySelector("#next").addEventListener("click", () => step(1));
 document.querySelector("#clear").addEventListener("click", () => {
@@ -611,7 +745,7 @@ window.addEventListener("mouseup", () => {
     const box = clampBox(normalizedBox(drag.x1, drag.y1, drag.x2, drag.y2));
     if (box.w >= 4 && box.h >= 4) {
       pushUndo();
-      state.boxes.push(box);
+      state.boxes.push({ ...box, cls: state.cls });
       state.selected = state.boxes.length - 1;
       commit();
       return;
@@ -643,6 +777,11 @@ window.addEventListener("keydown", (event) => {
     return;
   }
   if (typing) return;
+  if (/^[1-9]$/.test(event.key)) {
+    // 数字键：切当前类别，选中框同步改类
+    setActiveClass(Number(event.key) - 1, true);
+    return;
+  }
   if (event.key === "Delete" || event.key === "Backspace") {
     if (state.selected < 0) return;
     event.preventDefault();
@@ -672,18 +811,16 @@ async function boot() {
   const response = await apiFetch("/api/annotate/state");
   const payload = await response.json();
   if (payload.root && payload.images) {
-    folderInput.textContent = payload.root;
     state.images = payload.images;
     renderStats();
     renderList();
+    await loadClasses();
     if (state.images.length) {
       const firstTodo = state.images.findIndex((image) => image.count === null);
       goto(firstTodo >= 0 ? firstTodo : 0);
       return;
     }
   }
-  const remembered = localStorage.getItem("axle-folder");
-  if (remembered) folderInput.textContent = remembered;
   resizeCanvas();
 }
 

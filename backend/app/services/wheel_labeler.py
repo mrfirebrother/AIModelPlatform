@@ -32,11 +32,14 @@ class Library:
         folder = folder.expanduser().resolve()
         if not folder.is_dir():
             raise LabelerError(f"不是文件夹：{folder}")
+        if folder.parent == folder:
+            raise LabelerError(f"不要直接打开驱动器根目录（{folder}），请选择具体的图片文件夹")
         self.root = folder
         self.images = scan_images(folder)
         classes = folder / "classes.txt"
         if not classes.exists():
-            classes.write_text("wheel\n", encoding="utf-8")
+            # 新文件夹给一个占位类别，用户在界面改名/添加；已有文件一律尊重不动
+            classes.write_text("object\n", encoding="utf-8")
 
     def image_by_rel(self, rel: str) -> Path:
         if self.root is None:
@@ -57,7 +60,7 @@ class Library:
 LIBRARY = Library()
 
 
-def scan_images(folder: Path) -> list[Path]:
+def scan_images(folder: Path, limit: int = 30000) -> list[Path]:
     found: list[Path] = []
     for path in folder.rglob("*"):
         if not path.is_file() or path.suffix.lower() not in IMAGE_EXTS:
@@ -66,6 +69,8 @@ def scan_images(folder: Path) -> list[Path]:
         if "labels" in parts:
             continue
         found.append(path)
+        if len(found) > limit:
+            raise LabelerError(f"图片超过 {limit} 张，请选择更具体的子文件夹，不要打开过大的目录")
     found.sort()
     return found
 
@@ -94,11 +99,15 @@ def browse_dir(path: str) -> dict:
         ]
     except PermissionError:
         entries = []
+    is_drive_root = base.parent == base
     return {
         "path": str(base),
-        "parent": str(base.parent) if base.parent != base else "",
+        # 盘符根目录没有上一级（.. 不显示，只能用“回到驱动器”跳回盘符列表）
+        "parent": "" if is_drive_root else str(base.parent),
         "entries": entries,
-        "at_root": base.parent == base,
+        # at_root 只留给真正的盘符列表；盘符根目录标题显示盘符本身（如 D:\）
+        "at_root": False,
+        "is_drive_root": is_drive_root,
     }
 
 
@@ -145,7 +154,13 @@ def read_boxes(path: Path, width: int, height: int) -> list[dict]:
         parts = line.split()
         if len(parts) < 5:
             continue
-        _, xc, yc, bw, bh = parts[:5]
+        cid, xc, yc, bw, bh = parts[:5]
+        try:
+            cls = int(float(cid))
+        except ValueError:
+            cls = 0
+        if cls < 0:
+            cls = 0
         xc, yc, bw, bh = (float(xc), float(yc), float(bw), float(bh))
         pw, ph = bw * width, bh * height
         boxes.append(
@@ -154,6 +169,7 @@ def read_boxes(path: Path, width: int, height: int) -> list[dict]:
                 "y": yc * height - ph / 2,
                 "w": pw,
                 "h": ph,
+                "cls": cls,
             }
         )
     return boxes
@@ -163,6 +179,12 @@ def write_boxes(path: Path, boxes: list[dict], width: int, height: int) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     lines = []
     for box in boxes:
+        try:
+            cls = int(box.get("cls", 0))
+        except (TypeError, ValueError):
+            cls = 0
+        if cls < 0:
+            cls = 0
         w = max(float(box["w"]), 0.0)
         h = max(float(box["h"]), 0.0)
         if w < 1 or h < 1 or width < 1 or height < 1:
@@ -175,7 +197,7 @@ def write_boxes(path: Path, boxes: list[dict], width: int, height: int) -> None:
         yc = min(max(yc, 0.0), 1.0)
         nw = min(max(nw, 0.0), 1.0)
         nh = min(max(nh, 0.0), 1.0)
-        lines.append(f"0 {xc:.6f} {yc:.6f} {nw:.6f} {nh:.6f}")
+        lines.append(f"{cls} {xc:.6f} {yc:.6f} {nw:.6f} {nh:.6f}")
     path.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
 
 
@@ -285,7 +307,7 @@ def export_dataset(library: Library) -> dict:
         "train: train.txt\n"
         "val: val.txt\n"
         "names:\n"
-        "  0: wheel\n"
+        + "".join(f"  {i}: {name}\n" for i, name in enumerate(read_classes(library.root)))
     )
     (out / "data.yaml").write_text(yaml, encoding="utf-8")
     return {"dir": str(out), "images": len(rows), "train": len(train_rows), "val": len(val_rows or train_rows)}
@@ -299,3 +321,100 @@ def image_record(library: Library, image: Path) -> dict:
         "name": image.name,
         "count": count,
     }
+
+
+#: 客户端上传落盘限制（与数据集上传同一量级）
+UPLOAD_MAX_FILES = 5000
+UPLOAD_MAX_TOTAL_BYTES = 2 * 1024 * 1024 * 1024  # 2 GB
+UPLOAD_MAX_FILE_BYTES = 200 * 1024 * 1024  # 200 MB
+
+
+def sanitize_upload_rel(raw: str) -> Path:
+    """清洗客户端传来的相对路径（webkitRelativePath），防目录穿越。
+
+    只允许落在上传根目录内部的图片文件；非法一律抛 LabelerError（转 400）。
+    """
+    text = (raw or "").strip().replace("\\", "/")
+    if not text or text.startswith("/") or (len(text) > 1 and text[1] == ":"):
+        raise LabelerError(f"非法的文件路径：{raw}")
+    parts = [p for p in text.split("/") if p not in ("", ".")]
+    if not parts or ".." in parts:
+        raise LabelerError(f"非法的文件路径：{raw}")
+    rel = Path(*parts)
+    if rel.suffix.lower() not in IMAGE_EXTS:
+        raise LabelerError(f"不支持的图片类型：{raw}")
+    return rel
+
+
+def new_upload_root(base_dir: str) -> Path:
+    """新建一次上传的临时根目录（<dataset_dir>/annotate_uploads/up_<rand8>/）。"""
+    import uuid
+
+    root = Path(base_dir) / "annotate_uploads" / f"up_{uuid.uuid4().hex[:8]}"
+    root.mkdir(parents=True, exist_ok=False)
+    return root
+
+
+def read_classes(folder: Path) -> list[str]:
+    """读文件夹的 classes.txt；没有则返回占位类别。"""
+    path = folder / "classes.txt"
+    if not path.exists():
+        return ["object"]
+    names = [line.strip() for line in path.read_text(encoding="utf-8").splitlines()]
+    names = [name for name in names if name]
+    return names or ["object"]
+
+
+def write_classes(folder: Path, names: list[str]) -> list[str]:
+    """写 classes.txt；清洗（去空、去重、限 50 个），非法直接报错。"""
+    if not isinstance(names, list) or not names:
+        raise LabelerError("类别不能为空")
+    cleaned = []
+    for name in names:
+        if not isinstance(name, str):
+            raise LabelerError("类别名必须是文字")
+        name = name.strip()
+        if not name:
+            continue
+        if name not in cleaned:
+            cleaned.append(name)
+    if not cleaned:
+        raise LabelerError("类别不能为空")
+    if len(cleaned) > 50:
+        raise LabelerError("类别太多，最多 50 个")
+    (folder / "classes.txt").write_text("\n".join(cleaned) + "\n", encoding="utf-8")
+    return cleaned
+
+
+def prune_previous_upload(base_dir: str, old: Path | None, new: Path | None) -> bool:
+    """打开新目录后删掉上一次的上传目录，磁盘只留当前这一批。
+
+    只认 annotate_uploads/ 的直接子目录（即 new_upload_root 建出来的 up_*），
+    其他路径一律不动；删除失败也不抛错（返回 False），绝不能影响打开新目录。
+    """
+    try:
+        if old is None or new is None:
+            return False
+        uploads = (Path(base_dir) / "annotate_uploads").resolve()
+        old_root = old.resolve()
+        if old_root == new.resolve() or old_root.parent != uploads:
+            return False
+        shutil.rmtree(old_root, ignore_errors=True)
+        return not old_root.exists()
+    except OSError:
+        return False
+
+
+def resolve_upload_dest(root: Path, rel: Path) -> Path:
+    """把清洗过的相对路径定位到 root 内部；重名文件自动加序号，不覆盖。"""
+    dest = root / rel
+    if not dest.resolve().is_relative_to(root.resolve()):
+        raise LabelerError(f"非法的文件路径：{rel.as_posix()}")
+    if dest.exists():
+        stem, suffix = dest.stem, dest.suffix
+        for i in range(1, 10000):
+            cand = dest.parent / f"{stem}_{i}{suffix}"
+            if not cand.exists():
+                return cand
+        raise LabelerError(f"重名文件过多：{rel.as_posix()}")
+    return dest

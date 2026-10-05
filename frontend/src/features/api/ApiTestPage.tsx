@@ -60,21 +60,19 @@ export default function ApiTestPage() {
           <div className="card" style={{ padding: 0, overflow: "hidden", minHeight: 100 }}>
             <div className="card-section-header"><div className="card-section-title">{"推理测试"}</div></div>
             <div style={{ padding: "10px 12px" }}>
-              <div style={{ display: "grid", gridTemplateColumns: "0.25fr 1fr auto", gap: 10, alignItems: "center" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 10, alignItems: "center" }}>
                 <div>
-                  <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }}>{"选择模型"}</div>
                   <select value={selectedCode} onChange={(e) => { setSelectedCode(e.target.value); setResult(null); setError(null); }} style={{ width: "100%", padding: "7px 10px", border: "1px solid var(--surface-border)", borderRadius: 3, fontSize: 12, background: "#ffffff" }}>
                     {models.map((m) => <option key={m.id} value={m.code || ""}>{m.code} {"—"} {m.name}</option>)}
                   </select>
                 </div>
                 <div>
-                  <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }}>{"上传图片"}</div>
                   <label className="file-label" style={{ padding: "7px 10px" }}>
                     <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) { setFile(f); setResult(null); setError(null); } }} />
                     {file ? file.name : "选择图片"}
                   </label>
                 </div>
-                <div style={{ paddingTop: 14 }}>
+                <div>
                   <button className="btn primary" onClick={handleInfer} disabled={!file || loading} style={{ fontSize: 12, minWidth: 80 }}>
                     {loading ? "推理中..." : "开始推理"}
                   </button>
@@ -120,7 +118,7 @@ export default function ApiTestPage() {
 
           {!result && !loading && (
             <div style={{ padding: 20, textAlign: "center", color: "var(--text-muted)", fontSize: 12, border: "1px dashed var(--surface-border)", borderRadius: 6 }}>
-              {"选择模型 → 上传图片 → 点击“开始推理”查看结果"}
+              {"选择图片 → 点击“开始推理”查看结果"}
             </div>
           )}
         </div>

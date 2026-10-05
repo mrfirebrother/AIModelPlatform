@@ -4,23 +4,19 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate" />
-  <title>轮子标注台</title>
-  <link rel="stylesheet" href="./app.css?v=8" />
+  <title>图片标注台</title>
+  <link rel="stylesheet" href="./app.css?v=23" />
 </head>
 <body>
   <header>
     <div class="brand">
-      <span class="kicker">Axle bench</span>
-      <h1>轮子标注台</h1>
+      <span class="kicker">Label bench</span>
+      <h1>图片标注台</h1>
     </div>
-    <div class="folder-bar">
-      <label class="path">
-        <span>图片文件夹</span>
-        <span id="folder" class="folder-current">未打开</span>
-      </label>
-      <button type="button" id="pick" class="primary">文件夹</button>
+    <div class="head-actions">
+      <button type="button" id="pick" class="primary">上传图片</button>
     </div>
-    <div id="stats" class="stats">未打开</div>
+    <div id="stats" class="hide"></div>
   </header>
   <main>
     <aside class="rail">
@@ -36,17 +32,25 @@
     </aside>
     <section id="stage">
       <canvas id="view"></canvas>
+      <div id="caption" class="hide"></div>
       <div id="empty">
         <p class="empty-kicker">01</p>
         <h2>先打开现场图片文件夹</h2>
-        <p>自动提议会按圆找出轮子。你只改漏框、错框和备胎。标注写在该文件夹的 labels 目录，原图不动。</p>
+        <p>自动提议会按圆形找出目标。你只改漏框、错框。标注写在该文件夹的 labels 目录，原图不动。</p>
+        <p><button type="button" id="empty-pick" class="primary">选择本地文件夹上传</button></p>
       </div>
     </section>
     <aside class="side">
       <section>
-        <h2>这一张</h2>
-        <p id="meta" class="meta">还没有图片</p>
-        <label class="check"><input id="lower-only" type="checkbox" checked /> 只在画面中下部找轮子</label>
+        <div class="cls-row">
+          <select id="class-select" title="当前类别：新画的框都归它"></select>
+        </div>
+        <div class="cls-row">
+          <input id="class-input" placeholder="新类别名" />
+          <button type="button" id="class-add">添加</button>
+          <button type="button" id="class-rename">改名</button>
+        </div>
+        <label class="check"><input id="lower-only" type="checkbox" /> 只在画面中下部找目标</label>
         <label class="slider">
           <span>严格<span>宽松</span></span>
           <input id="loose" type="range" min="18" max="70" value="40" />
@@ -60,8 +64,6 @@
           <button type="button" id="export">导出 YOLO</button>
         </div>
         <p id="status" class="status">拖空白处画框。G 自动提议，Ctrl+Z 撤销。</p>
-      </section>
-      <section>
         <ol id="boxes"></ol>
       </section>
       <section>
@@ -72,23 +74,12 @@
           <li><b>Delete</b>删除选中</li>
           <li><b>← →</b>上一张 / 下一张</li>
           <li><b>G</b>自动提议，<b>Ctrl+Z</b>撤销</li>
+          <li><b>1–9</b>切换当前类别，选中框同步改类</li>
         </ul>
       </section>
     </aside>
   </main>
-  <script src="./app.js?v=8"></script>
-<div id="browser" class="browser hide">
-  <div class="browser-panel">
-    <div class="browser-head">
-      <span id="browser-path">选择文件夹</span>
-      <button type="button" id="browser-close">×</button>
-    </div>
-    <div class="browser-body" id="browser-list"></div>
-    <div class="browser-foot">
-      <button type="button" id="browser-parent">回到驱动器</button>
-      <button type="button" id="browser-choose" class="primary">选这个文件夹</button>
-    </div>
-  </div>
-</div>
+  <input id="upload-input" type="file" webkitdirectory multiple class="hide" />
+<script src="./app.js?v=23"></script>
 </body>
 </html>
