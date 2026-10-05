@@ -8,7 +8,8 @@ function uiPassword(): string {
   return sessionStorage.getItem("ui_password") || "";
 }
 
-function authHeaders(extra?: Record<string, string>): Record<string, string> {
+/** 供各页面原始 fetch/XHR 复用：同时带 API key 与界面密码头。 */
+export function authHeaders(extra?: Record<string, string>): Record<string, string> {
   return {
     "X-API-Key": import.meta.env.VITE_API_KEY || "change-me",
     "X-UI-Password": uiPassword(),

@@ -5,7 +5,7 @@ const TOOLS = [
     name: "车轮标注工具",
     desc: "打开图片文件夹，自动按圆提议车轮框，人工修正后导出 YOLO 数据集",
     icon: "◎",
-    href: "/wheel-labeler.html",
+    href: "/wheel-labeler/index.html",
     enabled: true,
   },
 ];

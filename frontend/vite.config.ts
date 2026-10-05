@@ -1,5 +1,4 @@
-﻿import { resolve } from "path";
-import { defineConfig } from "vite";
+﻿import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
 export default defineConfig({
@@ -13,15 +12,6 @@ export default defineConfig({
       "/api": {
         target: "http://127.0.0.1:8000",
         changeOrigin: true,
-      },
-    },
-  },
-  build: {
-    rollupOptions: {
-      // 多页：主应用 + 标注工具（车轮标注台，独立原生页面）
-      input: {
-        main: resolve(__dirname, "index.html"),
-        "wheel-labeler": resolve(__dirname, "wheel-labeler/index.html"),
       },
     },
   },
