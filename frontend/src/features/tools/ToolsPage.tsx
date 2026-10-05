@@ -18,7 +18,7 @@ export default function ToolsPage() {
           key={tool.key}
           className="grid-card tool-card"
           style={{ cursor: tool.enabled ? "pointer" : "not-allowed", opacity: tool.enabled ? 1 : 0.55 }}
-          onClick={() => { if (tool.enabled) window.location.href = tool.href; }}
+          onClick={() => { if (tool.enabled) window.open(tool.href, "_blank"); }}
         >
           <div className="tool-card-icon" style={{ background: "rgba(54,161,189,0.1)", color: "#36a1bd" }}>
             {tool.icon}
