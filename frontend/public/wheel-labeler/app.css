@@ -1,4 +1,4 @@
-﻿:root {
+﻿﻿:root {
   /* 与平台主界面同一套设计令牌（App.css） */
   --primary: #1677ff;
   --primary-dark: #0958d9;
@@ -304,3 +304,5 @@ main {
 .browser-item { padding: 8px 10px; font-size: 13px; cursor: pointer; border-radius: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .browser-item:hover { background: #e6f4ff; }
 .browser-foot { display: flex; justify-content: space-between; padding: 10px 16px; border-top: 1px solid #dbe6ee; }
+
+.folder-current { display: inline-block; min-width: 260px; max-width: 460px; border: 1px solid var(--line); background: #ffffff; padding: 8px 10px; border-radius: var(--radius); font-size: 13px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; }

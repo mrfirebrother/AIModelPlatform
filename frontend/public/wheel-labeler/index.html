@@ -12,14 +12,13 @@
       <span class="kicker">Axle bench</span>
       <h1>轮子标注台</h1>
     </div>
-    <form id="open-form">
+    <div class="folder-bar">
       <label class="path">
         <span>图片文件夹</span>
-        <input id="folder" spellcheck="false" placeholder="例如 D:\现场图" />
+        <span id="folder" class="folder-current">未打开</span>
       </label>
-      <button type="button" id="pick">选择</button>
-      <button type="submit">打开</button>
-    </form>
+      <button type="button" id="pick" class="primary">文件夹</button>
+    </div>
     <div id="stats" class="stats">未打开</div>
   </header>
   <main>

@@ -1,4 +1,4 @@
-"use strict";
+﻿"use strict";
 
 const API_KEY = "change-me";
 function uiPassword() { return sessionStorage.getItem("ui_password") || ""; }
@@ -368,7 +368,7 @@ async function openFolder(path) {
     setStatus(payload.error || "打不开文件夹", true);
     return;
   }
-  folderInput.value = payload.root;
+  folderInput.textContent = payload.root;
   localStorage.setItem("axle-folder", payload.root);
   state.images = payload.images;
   state.index = -1;
@@ -416,11 +416,6 @@ async function propose() {
   setStatus(`提议了 ${state.boxes.length} 个框。错的删掉，漏的补上。`);
 }
 
-document.querySelector("#open-form").addEventListener("submit", (event) => {
-  event.preventDefault();
-  openFolder(folderInput.value.trim());
-});
-
 let browserPath = "";
 function renderBrowser() {
   return apiFetch("/api/annotate/browse", {
@@ -452,14 +447,25 @@ function renderBrowser() {
 }
 document.querySelector("#pick").addEventListener("click", async () => {
   document.querySelector("#browser").classList.remove("hide");
-  browserPath = folderInput.value.trim();
+  browserPath = folderInput.textContent.trim();
   renderBrowser();
 });
 document.querySelector("#browser-close").addEventListener("click", () =>
   document.querySelector("#browser").classList.add("hide"));
 document.querySelector("#browser-choose").addEventListener("click", () => {
+  if (!browserPath) {
+    setStatus("请先进入一个目录，再选这个文件夹", true);
+    return;
+  }
   document.querySelector("#browser").classList.add("hide");
-  if (browserPath) { folderInput.value = browserPath; openFolder(browserPath); }
+  folderInput.textContent = browserPath;
+  openFolder(browserPath);
+});
+
+// 回到驱动器：直接回到盘符列表（目录列表里的 ".. 上一级" 负责逐级回退）
+document.querySelector("#browser-parent").addEventListener("click", () => {
+  browserPath = "";
+  renderBrowser();
 });
 
 document.querySelector("#filter").addEventListener("click", (event) => {
@@ -666,7 +672,7 @@ async function boot() {
   const response = await apiFetch("/api/annotate/state");
   const payload = await response.json();
   if (payload.root && payload.images) {
-    folderInput.value = payload.root;
+    folderInput.textContent = payload.root;
     state.images = payload.images;
     renderStats();
     renderList();
@@ -677,7 +683,7 @@ async function boot() {
     }
   }
   const remembered = localStorage.getItem("axle-folder");
-  if (remembered) folderInput.value = remembered;
+  if (remembered) folderInput.textContent = remembered;
   resizeCanvas();
 }
 
