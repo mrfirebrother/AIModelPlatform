@@ -388,6 +388,6 @@ main {
 .keys li + li { margin-top: 6px; }
 .keys b { color: var(--ink); font-weight: 600; }
 
-.side section + section { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
+.side section + section { padding-top: 16px; }
 
 .hide { display: none !important; }

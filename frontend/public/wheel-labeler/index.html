@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate" />
   <title>图片标注台</title>
-  <link rel="stylesheet" href="./app.css?v=23" />
+  <link rel="stylesheet" href="./app.css?v=26" />
 </head>
 <body>
   <header>
@@ -36,7 +36,7 @@
       <div id="empty">
         <p class="empty-kicker">01</p>
         <h2>先打开现场图片文件夹</h2>
-        <p>自动提议会按圆形找出目标。你只改漏框、错框。标注写在该文件夹的 labels 目录，原图不动。</p>
+        <p>“找圆提议”只对圆形目标有效，其他目标直接手画。你只改漏框、错框。标注写在该文件夹的 labels 目录，原图不动。</p>
         <p><button type="button" id="empty-pick" class="primary">选择本地文件夹上传</button></p>
       </div>
     </section>
@@ -56,14 +56,14 @@
           <input id="loose" type="range" min="18" max="70" value="40" />
         </label>
         <div class="actions">
-          <button type="button" id="propose" class="primary">自动提议</button>
+          <button type="button" id="propose" class="primary">找圆提议</button>
           <button type="button" id="prev">上一张</button>
           <button type="button" id="next">下一张</button>
           <button type="button" id="clear">清空框</button>
           <button type="button" id="forget">标为未看</button>
           <button type="button" id="export">导出 YOLO</button>
         </div>
-        <p id="status" class="status">拖空白处画框。G 自动提议，Ctrl+Z 撤销。</p>
+        <p id="status" class="status">拖空白处画框。G 找圆提议，Ctrl+Z 撤销。</p>
         <ol id="boxes"></ol>
       </section>
       <section>
@@ -73,13 +73,14 @@
           <li><b>滚轮</b>缩放，<b>中键</b>平移</li>
           <li><b>Delete</b>删除选中</li>
           <li><b>← →</b>上一张 / 下一张</li>
-          <li><b>G</b>自动提议，<b>Ctrl+Z</b>撤销</li>
+          <li><b>右键</b>点框直接删除</li>
+          <li><b>G</b>找圆提议，<b>Ctrl+Z</b>撤销</li>
           <li><b>1–9</b>切换当前类别，选中框同步改类</li>
         </ul>
       </section>
     </aside>
   </main>
   <input id="upload-input" type="file" webkitdirectory multiple class="hide" />
-<script src="./app.js?v=23"></script>
+<script src="./app.js?v=26"></script>
 </body>
 </html>

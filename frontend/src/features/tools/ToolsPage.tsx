@@ -2,8 +2,8 @@
 const TOOLS = [
   {
     key: "wheel-labeler",
-    name: "车轮标注工具",
-    desc: "打开图片文件夹，自动按圆提议车轮框，人工修正后导出 YOLO 数据集",
+    name: "图片标注工具",
+    desc: "打开本地图片文件夹，多类别框标注，圆形目标可一键提议，修正后导出 YOLO 数据集",
     icon: "◎",
     href: "/wheel-labeler/index.html",
     enabled: true,

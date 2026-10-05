@@ -735,6 +735,20 @@ window.addEventListener("mousemove", (event) => {
   }
 });
 
+// 右键点框直接删除（同时屏蔽浏览器右键菜单）
+canvas.addEventListener("contextmenu", (event) => {
+  event.preventDefault();
+  if (!state.img || !state.ready) return;
+  const [cx, cy] = eventToCanvas(event);
+  const [ix, iy] = screenToImage(cx, cy);
+  const hit = hitBox(ix, iy);
+  if (hit < 0) return;
+  pushUndo();
+  state.boxes.splice(hit, 1);
+  state.selected = -1;
+  commit();
+});
+
 window.addEventListener("mouseup", () => {
   if (!state.tool) return;
   const tool = state.tool;
